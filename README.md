@@ -1,4 +1,4 @@
-A simple rendering engine based on the [Rust Vulkan Tutorial](https://kylemayes.github.io/vulkanalia/introduction.html). 
+### A simple rendering engine based on the [Rust Vulkan Tutorial](https://kylemayes.github.io/vulkanalia/introduction.html). 
 
 
 Currently the program will display four rotating 'Viking Rooms' with different opacities. 
