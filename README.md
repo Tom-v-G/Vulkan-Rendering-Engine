@@ -6,6 +6,7 @@ Currently the program will display four rotating 'Viking Rooms' with different o
 
 ### TODOS
 - [ ] Add menu integration with [eGUI](https://github.com/emilk/egui)
+- [ ] Allow for a movable camera
 - [ ] Add support for voxel-based rendering
 - [ ] Add extra features such as: 
     - Instanced rendering
