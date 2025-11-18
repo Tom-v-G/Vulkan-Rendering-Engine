@@ -1750,7 +1750,8 @@ unsafe fn create_texture_image(
 ) -> Result<()> {
     // TODO: create a setup_command_buffer and flush_setup_commands functions to record and execute commands (Ch 28)
     
-    let image = File::open("resources/viking_room.png")?;
+    let image = File::open("resources/frog2.png")?;
+    // let image = File::open("resources/viking_room.png")?;
  
 
     let decoder = png::Decoder::new(image);
@@ -1765,6 +1766,11 @@ unsafe fn create_texture_image(
     if width != 1024 || height != 1024 || reader.info().color_type != png::ColorType::Rgba {
         panic!("Invalid texture image.");
     } 
+
+
+    // if width != 2048 || height != 2048 || reader.info().color_type != png::ColorType::Rgb {
+    //     panic!("Invalid texture image.");
+    // } 
 
     data.mip_levels = (width.max(height) as f32).log2().floor() as u32 + 1;
 
@@ -2154,8 +2160,88 @@ unsafe fn get_depth_format(instance: &Instance, data: &AppData) -> Result<vk::Fo
     )
 }
 
+// fn find_model_vertex_bounds(model_mesh: &tobj::Mesh) -> [<Vec<f32>; 3]{
+//     // normalization variables
+//     let mut x_min: f32 = 0.0;
+//     let mut x_max: f32 = 0.0;
+//     let mut y_min: f32 = 0.0;
+//     let mut y_max: f32 = 0.0;
+//     let mut z_min: f32 = 0.0;
+//     let mut z_max: f32 = 0.0;
+
+//     // find bounds of model
+//     for index in &model_mesh.indices {
+//         let pos_offset = (3 * index) as usize;
+//         // x 
+//         if model_mesh.positions[pos_offset] < x_min {
+//             x_min = model_mesh.positions[pos_offset]
+//         }
+//         if model_mesh.positions[pos_offset] > x_max {
+//             x_max = model_mesh.positions[pos_offset] 
+//         }
+//         // y
+//         if model_mesh.positions[pos_offset + 1] < y_min {
+//             y_min = model_mesh.positions[pos_offset + 1]
+//         }
+//         if model_mesh.positions[pos_offset] > y_max {
+//             y_max = model_mesh.positions[pos_offset + 1] 
+//         }
+//         // z
+//         if model_mesh.positions[pos_offset + 2] < z_min {
+//             z_min = model_mesh.positions[pos_offset+ 2]
+//         }
+//         if model_mesh.positions[pos_offset + 2] > z_max {
+//             z_max = model_mesh.positions[pos_offset + 2] 
+//         }
+//     }
+//     return vec![vec![x_min, x_max], vec![y_min, y_max], vec![z_min, z_max]];
+// }
+
+// fn scale_model_vertices(model_mesh: &tobj::Mesh, scale: f32) -> cgmath::Vector3<f32> {
+//     // normalization variables
+//     let mut x_min: f32 = 0.0;
+//     let mut x_max: f32 = 0.0;
+//     let mut y_min: f32 = 0.0;
+//     let mut y_max: f32 = 0.0;
+//     let mut z_min: f32 = 0.0;
+//     let mut z_max: f32 = 0.0;
+
+//     // find bounds of model
+//     for index in &model_mesh.indices {
+//         let pos_offset = (3 * index) as usize;
+//         // x 
+//         if model.mesh.positions[pos_offset] < x_min {
+//             x_min = model.mesh.positions[pos_offset]
+//         }
+//         if model.mesh.positions[pos_offset] > x_max {
+//             x_max = model.mesh.positions[pos_offset] 
+//         }
+//         // y
+//         if model.mesh.positions[pos_offset + 1] < y_min {
+//             y_min = model.mesh.positions[pos_offset + 1]
+//         }
+//         if model.mesh.positions[pos_offset] > y_max {
+//             y_max = model.mesh.positions[pos_offset + 1] 
+//         }
+//         // z
+//         if model.mesh.positions[pos_offset + 2] < z_min {
+//             z_min = model.mesh.positions[pos_offset+ 2]
+//         }
+//         if model.mesh.positions[pos_offset + 2] > z_max {
+//             z_max = model.mesh.positions[pos_offset + 2] 
+//         }
+//     }
+
+//     // normalize and scale 
+
+
+// }
+
+
+
 fn load_model(data: &mut AppData) -> Result<()> {
-    let mut reader = BufReader::new(File::open("resources/viking_room.obj")?);
+    let mut reader = BufReader::new(File::open("resources/frog.obj")?);
+    // let mut reader = BufReader::new(File::open("resources/viking_room.obj")?);
 
     let (models, _) = load_obj_buf(
         &mut reader,
@@ -2163,18 +2249,58 @@ fn load_model(data: &mut AppData) -> Result<()> {
         |_| Ok(Default::default()),
     )?;
 
+
+    // hashmap to prevent duplicate vertices
     let mut unique_vertices = HashMap::new();
 
     for model in &models {
+
+    // normalization variables
+        let mut x_min: f32 = 0.0;
+        let mut x_max: f32 = 0.0;
+        let mut y_min: f32 = 0.0;
+        let mut y_max: f32 = 0.0;
+        let mut z_min: f32 = 0.0;
+        let mut z_max: f32 = 0.0;
+
+        // find bounds of model
+        for index in &model.mesh.indices {
+            let pos_offset = (3 * index) as usize;
+            // x 
+            if model.mesh.positions[pos_offset] < x_min {
+                x_min = model.mesh.positions[pos_offset]
+            }
+            if model.mesh.positions[pos_offset] > x_max {
+                x_max = model.mesh.positions[pos_offset] 
+            }
+            // y
+            if model.mesh.positions[pos_offset + 1] < y_min {
+                y_min = model.mesh.positions[pos_offset + 1]
+            }
+            if model.mesh.positions[pos_offset] > y_max {
+                y_max = model.mesh.positions[pos_offset + 1] 
+            }
+            // z
+            if model.mesh.positions[pos_offset + 2] < z_min {
+                z_min = model.mesh.positions[pos_offset+ 2]
+            }
+            if model.mesh.positions[pos_offset + 2] > z_max {
+                z_max = model.mesh.positions[pos_offset + 2] 
+            }
+        }
+
+        // (x_mesh_bounds, y_mesh_bounds, z_mesh_bounds) = find_model_vertex_bounds(&model.mesh);
+
         for index in &model.mesh.indices {
             let pos_offset = (3 * index) as usize;
             let tex_coord_offset = (2 * index) as usize;
 
+            // TODO: make normalization correct
             let vertex = Vertex {
                 pos: vec3(
-                    model.mesh.positions[pos_offset],
-                    model.mesh.positions[pos_offset + 1],
-                    model.mesh.positions[pos_offset + 2],
+                    (((model.mesh.positions[pos_offset] - x_min) / (x_max - x_min).abs()) -0.5) * 2.0,
+                    (((model.mesh.positions[pos_offset + 1] - y_min) / (y_max - y_min).abs()) -0.5) * 2.0,
+                    (((model.mesh.positions[pos_offset + 2] -z_min) / (z_max - z_min).abs()) -0.5) * 2.0,
                 ),
                 color: vec3(1.0, 1.0, 1.0),
                 tex_coord: vec2(
