@@ -137,7 +137,7 @@ pub unsafe fn create_pipeline(device: &Device, data: &mut AppData) -> Result<()>
     Ok(())
 }
 
-pub unsafe fn create_descriptor_set_layout(device: &Device) -> Result<(vk::DescriptorSetLayout)> {
+pub unsafe fn create_descriptor_set_layout(device: &Device) -> Result<vk::DescriptorSetLayout> {
     let ubo_binding = vk::DescriptorSetLayoutBinding::builder()
         .binding(0)
         .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
@@ -155,7 +155,7 @@ pub unsafe fn create_descriptor_set_layout(device: &Device) -> Result<(vk::Descr
 
     let descriptor_set_layout = device.create_descriptor_set_layout(&info, None)?;
 
-    Ok((descriptor_set_layout))
+    Ok(descriptor_set_layout)
 }
 
 pub unsafe fn create_framebuffers(device: &Device, data: &mut AppData) -> Result<()> {
