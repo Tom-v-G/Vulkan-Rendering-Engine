@@ -4,7 +4,7 @@ use winit::{
     keyboard::{KeyCode, PhysicalKey},
 };
 
-use crate::app::App;
+use crate::{app::RenderApp, input};
 
 #[derive(Debug, Clone, Copy)]
 pub enum Action {
@@ -23,12 +23,17 @@ pub enum Action {
 
 pub struct InputState {
     pub pressed_keys: HashSet<KeyCode>,
+    pub mouse_delta: (f64, f64),
 }
 
 impl InputState {
     pub fn new() -> Self {
         let pressed_keys: HashSet<KeyCode> = HashSet::new();
-        return Self { pressed_keys };
+        let mouse_delta = (0., 0.);
+        return Self {
+            pressed_keys,
+            mouse_delta,
+        };
     }
 }
 
@@ -59,7 +64,7 @@ impl InputMap {
     }
 }
 
-pub fn handle_keyboard_input(event: KeyEvent, app: &mut App, input_state: &mut InputState) {
+pub fn handle_keyboard_input(event: KeyEvent, input_state: &mut InputState) {
     if let PhysicalKey::Code(code) = event.physical_key {
         match event.state {
             ElementState::Pressed => {
@@ -70,4 +75,8 @@ pub fn handle_keyboard_input(event: KeyEvent, app: &mut App, input_state: &mut I
             }
         }
     }
+}
+
+pub fn handle_mouse_input(delta: (f64, f64), input_state: &mut InputState) {
+    input_state.mouse_delta = delta;
 }

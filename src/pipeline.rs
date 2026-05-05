@@ -1,13 +1,14 @@
 use vulkanalia::prelude::v1_0::*;
 
 use crate::app_data::AppData;
+use crate::gui::Gui;
 use crate::images::get_depth_format;
 use crate::utils::*;
 use crate::vertex::Vertex;
 
 pub unsafe fn create_pipeline(device: &Device, data: &mut AppData) -> Result<()> {
-    let vert = include_bytes!("../shaders/vert.spv");
-    let frag = include_bytes!("../shaders/frag.spv");
+    let vert = include_bytes!("../shaders/vertex_simple/vert.spv");
+    let frag = include_bytes!("../shaders/vertex_simple/frag.spv");
 
     let vert_shader_module = create_shader_module(device, &vert[..])?;
     let frag_shader_module = create_shader_module(device, &frag[..])?;
@@ -171,6 +172,28 @@ pub unsafe fn create_framebuffers(device: &Device, data: &mut AppData) -> Result
                 .height(data.swapchain_extent.height)
                 .layers(1);
             device.create_framebuffer(&create_info, None)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(())
+}
+
+pub unsafe fn create_gui_framebuffers(
+    device: &Device,
+    data: &mut AppData,
+    gui: &Gui,
+) -> Result<()> {
+    data.gui_framebuffers = data
+        .swapchain_image_views
+        .iter()
+        .map(|&view| {
+            let attachments = &[view];
+            let framebuffer_info = vk::FramebufferCreateInfo::builder()
+                .render_pass(gui.render_pass)
+                .attachments(attachments)
+                .width(data.swapchain_extent.width)
+                .height(data.swapchain_extent.height)
+                .layers(1);
+            device.create_framebuffer(&framebuffer_info, None)
         })
         .collect::<Result<Vec<_>, _>>()?;
     Ok(())

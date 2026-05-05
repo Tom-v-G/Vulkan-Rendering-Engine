@@ -11,8 +11,8 @@ use crate::app_data::AppData;
 use crate::vertex::Vertex;
 
 pub fn load_model(data: &mut AppData) -> Result<()> {
-    let mut reader = BufReader::new(File::open("resources/frog.obj")?);
-    // let mut reader = BufReader::new(File::open("resources/viking_room.obj")?);
+    // let mut reader = BufReader::new(File::open("resources/frog.obj")?);
+    let mut reader = BufReader::new(File::open("resources/viking_room.obj")?);
 
     let (models, _) = load_obj_buf(
         &mut reader,

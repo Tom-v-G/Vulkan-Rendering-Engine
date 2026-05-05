@@ -9,11 +9,12 @@ use std::time::Instant;
 
 use anyhow::{anyhow, Result};
 
+use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::ElementState;
+use winit::event::{DeviceEvent, ElementState};
 use winit::event::{Event, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget};
-use winit::window::WindowBuilder;
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::window::{Window, WindowId};
 
 use vulkanalia::prelude::v1_0::*;
 
@@ -25,6 +26,7 @@ mod commands;
 mod constants;
 mod descriptors;
 mod device;
+mod gui;
 mod images;
 mod input;
 mod instance;
@@ -35,89 +37,241 @@ mod textures;
 mod utils;
 mod vertex;
 
-use crate::app::App;
+use crate::app::RenderApp;
 use crate::constants::*;
-use crate::input::{handle_keyboard_input, Action, InputMap, InputState};
+use crate::input::{handle_keyboard_input, handle_mouse_input, Action, InputMap, InputState};
+
+struct RenderState {
+    window: Window,
+    render_app: RenderApp,
+}
+
+struct RuntimeState {
+    minimized: bool,
+    inputmap: InputMap,
+    inputstate: InputState,
+    last_frame: Instant,
+}
+
+struct WindowApp {
+    renderstate: Option<RenderState>,
+    runtime: RuntimeState,
+}
+
+impl ApplicationHandler for WindowApp {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        if self.renderstate.is_some() {
+            return;
+        }
+
+        let window = event_loop
+            .create_window(
+                Window::default_attributes()
+                    .with_title(ENGINE_TITLE)
+                    .with_inner_size(LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT)),
+            )
+            .unwrap();
+
+        let render_app =
+            unsafe { RenderApp::create(&window).expect("Failed to create render app.") };
+
+        self.renderstate = Some(RenderState { window, render_app })
+    }
+
+    // TODO Rewrite this code to implement the old event loop functions.
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        if self.renderstate.is_none() {
+            return;
+        }
+
+        let renderstate = self.renderstate.as_mut().unwrap();
+
+        let egui_response = renderstate
+            .render_app
+            .gui
+            .egui_winit
+            .on_window_event(&renderstate.window, &event);
+
+        match event {
+            // Handle shutdown
+            WindowEvent::CloseRequested => {
+                exit_program(&event_loop, &mut renderstate.render_app);
+                event_loop.exit();
+            }
+            // Redraw the application.
+            WindowEvent::RedrawRequested if !self.runtime.minimized => {
+                unsafe { renderstate.render_app.render(&renderstate.window) }.unwrap()
+            }
+            // Mark window as resized
+            WindowEvent::Resized(size) => {
+                if size.width == 0 || size.height == 0 {
+                    self.runtime.minimized = true;
+                } else {
+                    self.runtime.minimized = false;
+                    renderstate.render_app.resized = true;
+                }
+            }
+
+            WindowEvent::KeyboardInput { event, .. } => {
+                if !egui_response.consumed {
+                    handle_keyboard_input(event, &mut self.runtime.inputstate);
+                }
+            }
+            _ => (),
+        }
+    }
+
+    fn device_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        device_id: winit::event::DeviceId,
+        event: DeviceEvent,
+    ) {
+        match event {
+            DeviceEvent::MouseMotion { delta } => {
+                handle_mouse_input(delta, &mut self.runtime.inputstate)
+            }
+            _ => {}
+        }
+    }
+
+    // Process all events
+    // Request a redraw when all events were processed.
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        let now = Instant::now();
+        let dt = (now - self.runtime.last_frame).as_secs_f32();
+        self.runtime.last_frame = now;
+
+        if self.renderstate.is_none() {
+            return;
+        }
+
+        // Handle update
+        let renderstate = self.renderstate.as_mut().unwrap();
+        update(
+            &mut renderstate.render_app,
+            &mut self.runtime.inputstate,
+            dt,
+            &self.runtime.inputmap,
+        );
+
+        // Handle shutdown
+        if renderstate.render_app.shutdown_triggered {
+            exit_program(&event_loop, &mut renderstate.render_app);
+            event_loop.exit();
+        }
+
+        renderstate.window.request_redraw();
+    }
+}
 
 fn main() -> Result<()> {
     pretty_env_logger::init();
 
     // Window
-    let event_loop = EventLoop::new()?;
+    let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll); // Note: ControlFlow::WaitUntil might give better frame pacing
-    let window = WindowBuilder::new()
-        .with_title("Garbo Engine")
-        .with_inner_size(LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT))
-        .build(&event_loop)?;
 
-    // App
-    let mut app = unsafe { App::create(&window)? };
-    let mut minimized = false;
+    let mut runtime = RuntimeState {
+        minimized: false,
+        inputmap: InputMap::new(),
+        inputstate: InputState::new(),
+        last_frame: Instant::now(),
+    };
 
-    let inputmap = InputMap::new();
-    let mut input_state = InputState::new();
+    let mut window_app = WindowApp {
+        renderstate: None,
+        runtime,
+    };
+    event_loop.run_app(&mut window_app);
 
-    let mut last_frame = Instant::now();
+    // V needs to go
+    // let mut render_app: Option<RenderApp> = None;
 
-    event_loop.run(move |event, elwt| {
-        match event {
-            // Request a redraw when all events were processed.
-            Event::AboutToWait => {
-                let now = Instant::now();
-                let dt = (now - last_frame).as_secs_f32();
-                last_frame = now;
+    // // App
 
-                update(&mut app, &input_state, dt, &inputmap);
+    // let mut minimized = false;
 
-                if app.shutdown_triggered {
-                    exit_program(elwt, &mut app);
-                }
-                window.request_redraw();
-            }
-            Event::WindowEvent { event, .. } => match event {
-                // Render a frame if our Vulkan app is not being destroyed.
-                WindowEvent::RedrawRequested if !elwt.exiting() && !minimized => {
-                    unsafe { app.render(&window) }.unwrap()
-                }
-                // Mark window as resized
-                WindowEvent::Resized(size) => {
-                    if size.width == 0 || size.height == 0 {
-                        minimized = true;
-                    } else {
-                        minimized = false;
-                        app.resized = true;
-                    }
-                }
-                WindowEvent::KeyboardInput { event, .. } => {
-                    handle_keyboard_input(event, &mut app, &mut input_state)
-                }
-                // Destroy our Vulkan app.
-                WindowEvent::CloseRequested => {
-                    exit_program(elwt, &mut app);
-                }
-                _ => {}
-            },
-            _ => {}
-        }
-    })?;
+    // let inputmap = InputMap::new();
+    // let mut input_state = InputState::new();
+
+    // let mut last_frame = Instant::now();
+
+    // event_loop.run_app(&mut window_app {
+    //     match event {
+    //         // Create app when first initialised
+    //         Event::Resumed => {
+    //             if app.is_none() {
+    //                 let window = elwt.create_window(
+    //                     Window::default_attributes()
+    //                         .with_title("Garbo Engine")
+    //                         .with_inner_size(LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT)),
+    //                 )?;
+    //                 let mut app = unsafe { App::create(&window)? };
+    //             }
+    //         }
+
+    //         // Request a redraw when all events were processed.
+    //         Event::AboutToWait => {
+    //             let now = Instant::now();
+    //             let dt = (now - last_frame).as_secs_f32();
+    //             last_frame = now;
+
+    //             update(&mut app, &mut input_state, dt, &inputmap);
+
+    //             if app.shutdown_triggered {
+    //                 exit_program(elwt, &mut app);
+    //             }
+    //             window.request_redraw();
+    //         }
+    //         Event::DeviceEvent { event, .. } => match event {
+    //             DeviceEvent::MouseMotion { delta } => handle_mouse_input(delta, &mut input_state),
+    //             _ => {}
+    //         },
+    //         Event::WindowEvent { event, .. } => match event {
+    //             // Render a frame if our Vulkan app is not being destroyed.
+    //             WindowEvent::RedrawRequested if !elwt.exiting() && !minimized => {
+    //                 unsafe { app.render(&window) }.unwrap()
+    //             }
+    //             // Mark window as resized
+    //             WindowEvent::Resized(size) => {
+    //                 if size.width == 0 || size.height == 0 {
+    //                     minimized = true;
+    //                 } else {
+    //                     minimized = false;
+    //                     app.resized = true;
+    //                 }
+    //             }
+    //             WindowEvent::KeyboardInput { event, .. } => {
+    //                 handle_keyboard_input(event, &mut input_state)
+    //             }
+    //             // Destroy our Vulkan app.
+    //             WindowEvent::CloseRequested => {
+    //                 exit_program(elwt, &mut app);
+    //             }
+    //             _ => {}
+    //         },
+    //         _ => {}
+    //     }
+    // })?;
 
     Ok(())
 }
 
-fn exit_program(elwt: &EventLoopWindowTarget<()>, app: &mut App) {
+fn exit_program(eventloop: &ActiveEventLoop, render_app: &mut RenderApp) {
     println!("Closing window");
-    elwt.exit();
+    eventloop.exit();
     // destroying = true;
     // *control_flow = ControlFlow::Exit;
     unsafe {
-        app.device.device_wait_idle().unwrap();
+        render_app.device.device_wait_idle().unwrap();
     }
     unsafe {
-        app.destroy();
+        render_app.destroy();
     }
 }
 
-fn update(app: &mut App, input: &InputState, dt: f32, input_map: &InputMap) {
+fn update(app: &mut RenderApp, input: &mut InputState, dt: f32, input_map: &InputMap) {
     const SPEED: f32 = 5.0; // units per second
     let velocity = SPEED * dt;
 
@@ -135,4 +289,7 @@ fn update(app: &mut App, input: &InputState, dt: f32, input_map: &InputMap) {
             }
         }
     }
+
+    app.camera.update_camera_look(input.mouse_delta);
+    input.mouse_delta = (0., 0.);
 }

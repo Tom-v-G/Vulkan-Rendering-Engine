@@ -14,8 +14,8 @@ pub unsafe fn create_texture_image(
 ) -> Result<()> {
     // TODO: create a setup_command_buffer and flush_setup_commands functions to record and execute commands (Ch 28)
 
-    let image = File::open("resources/frog2.png")?;
-    // let image = File::open("resources/viking_room.png")?;
+    // let image = File::open("resources/frog2.png")?;
+    let image = File::open("resources/viking_room.png")?;
 
     let decoder = png::Decoder::new(image);
     let mut reader = decoder.read_info()?;

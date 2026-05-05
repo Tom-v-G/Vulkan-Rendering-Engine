@@ -3,7 +3,8 @@ use anyhow::Result;
 use vulkanalia::vk::KhrSwapchainExtension;
 
 use vulkanalia::prelude::v1_0::*;
-use winit::window::Window;
+// use winit::window::Window;
+use egui_winit::winit::window::Window;
 
 use crate::app_data::AppData;
 use crate::device::{QueueFamilyIndices, SwapchainSupport};

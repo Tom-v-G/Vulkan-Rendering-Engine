@@ -7,7 +7,8 @@ use std::os::raw::c_void;
 use vulkanalia::prelude::v1_0::*;
 use vulkanalia::vk::ExtDebugUtilsExtension;
 use vulkanalia::window as vk_window;
-use winit::window::Window;
+// use winit::window::Window;
+use egui_winit::winit::window::Window;
 
 use crate::app_data::AppData;
 use crate::constants::*;

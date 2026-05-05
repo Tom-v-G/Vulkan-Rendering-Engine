@@ -1,8 +1,10 @@
 use anyhow::{anyhow, Result};
+use egui::{FontId, RichText};
 use std::mem::size_of;
 use std::ptr::copy_nonoverlapping as memcpy;
 use std::time::Instant;
-use winit::window::Window;
+// use winit::window::Window;
+use egui_winit::winit::window::Window;
 
 use vulkanalia::loader::{LibloadingLoader, LIBRARY};
 use vulkanalia::prelude::v1_0::*;
@@ -20,11 +22,13 @@ use crate::commands::{create_command_buffers, create_command_pools, create_sync_
 use crate::constants::*;
 use crate::descriptors::{create_descriptor_pool, create_descriptor_sets};
 use crate::device::{create_logical_device, pick_physical_device};
+use crate::gui::Gui;
 use crate::images::{create_color_objects, create_depth_objects};
 use crate::instance::create_instance;
 use crate::load_models::load_model;
 use crate::pipeline::{
-    create_descriptor_set_layout, create_framebuffers, create_pipeline, create_render_pass,
+    create_descriptor_set_layout, create_framebuffers, create_gui_framebuffers, create_pipeline,
+    create_render_pass,
 };
 use crate::swapchain::{create_swapchain, create_swapchain_image_views};
 use crate::textures::{create_texture_image, create_texture_image_view, create_texture_sampler};
@@ -36,8 +40,7 @@ type Vec2 = cgmath::Vector2<f32>;
 type Vec3 = cgmath::Vector3<f32>;
 type Mat4 = cgmath::Matrix4<f32>;
 
-#[derive(Clone, Debug)]
-pub struct App {
+pub struct RenderApp {
     pub entry: Entry,
     pub instance: Instance,
     pub data: AppData,
@@ -47,10 +50,11 @@ pub struct App {
     pub start: Instant,
     pub camera: Camera,
     pub models: usize,
+    pub gui: Gui,
     pub shutdown_triggered: bool,
 }
 
-impl App {
+impl RenderApp {
     /// Creates our Vulkan app.
     pub unsafe fn create(window: &Window) -> Result<Self> {
         let loader = LibloadingLoader::new(LIBRARY)?;
@@ -64,10 +68,12 @@ impl App {
         let models = 1;
         let shutdown_triggered = false;
 
+        println!("Creeating device");
         data.surface = vk_window::create_surface(&instance, &window, &window)?;
         pick_physical_device(&instance, &mut data)?;
         let device = create_logical_device(&entry, &instance, &mut data)?;
 
+        println!("Creating Pipeline components");
         create_swapchain(window, &instance, &device, &mut data)?;
         create_swapchain_image_views(&device, &mut data)?;
         create_render_pass(&instance, &device, &mut data)?;
@@ -75,6 +81,7 @@ impl App {
         create_pipeline(&device, &mut data)?;
         create_command_pools(&instance, &device, &mut data)?;
 
+        println!("Creating Models");
         create_color_objects(&instance, &device, &mut data)?;
         create_depth_objects(&instance, &device, &mut data)?;
         create_framebuffers(&device, &mut data)?;
@@ -105,6 +112,17 @@ impl App {
         create_command_buffers(&device, &mut data)?;
         create_sync_objects(&device, &mut data)?;
 
+        println!("Creating GUI");
+        let gui = Gui::create(
+            &window,
+            &instance,
+            &device,
+            &data,
+            data.swapchain_images.len(),
+        )?;
+        println!("Creating GUI framebuffers");
+        create_gui_framebuffers(&device, &mut data, &gui)?;
+
         println!("App created");
         Ok(Self {
             entry,
@@ -116,6 +134,7 @@ impl App {
             start,
             camera,
             models,
+            gui,
             shutdown_triggered,
         })
     }
@@ -130,6 +149,16 @@ impl App {
         create_color_objects(&self.instance, &self.device, &mut self.data)?;
         create_depth_objects(&self.instance, &self.device, &mut self.data)?;
         create_framebuffers(&self.device, &mut self.data)?;
+
+        // Destroy old GUI framebuffers
+        self.data
+            .gui_framebuffers
+            .iter()
+            .for_each(|f| self.device.destroy_framebuffer(*f, None));
+
+        // Recreate for new swapchain size
+        create_gui_framebuffers(&self.device, &mut self.data, &self.gui)?;
+
         create_uniform_buffers(&self.instance, &self.device, &mut self.data)?;
         create_descriptor_pool(&self.device, &mut self.data)?;
         create_descriptor_sets(&self.device, &mut self.data)?;
@@ -169,7 +198,24 @@ impl App {
 
         self.data.images_in_flight[image_index as usize] = self.data.in_flight_fences[self.frame];
 
-        self.update_command_buffer(image_index)?;
+        // ---- GUI ----
+        // probably a cleaner way to do this
+
+        let ctx = self.gui.begin_frame(window);
+        egui::Window::new("Debug").show(ctx, |ui| {
+            ui.label(RichText::new("Large Text").font(FontId::proportional(40.0)));
+            ui.label(
+                RichText::new(format!("Models: {}", self.models))
+                    .font(FontId::proportional(30.0))
+                    .color(egui::Color32::RED),
+            );
+            // ui.label(
+            //     RichText::new(format!("Frame time: {} s", self.start.elapsed().as_secs()))
+            //         .font(FontId::proportional(30.0)),
+            // );
+        });
+
+        self.update_command_buffer(image_index, window)?; // <- GUI render also happens in here
         self.update_uniform_buffer(image_index, &self.camera)?;
 
         let wait_semaphores = &[self.data.image_available_semaphores[self.frame]];
@@ -254,6 +300,15 @@ impl App {
             .for_each(|s| self.device.destroy_semaphore(*s, None));
         self.device
             .destroy_command_pool(self.data.command_pool, None);
+
+        self.gui.destroy(&self.device); // ADD
+
+        // Also destroy gui framebuffers
+        self.data
+            .gui_framebuffers
+            .iter()
+            .for_each(|f| self.device.destroy_framebuffer(*f, None));
+
         self.device.destroy_device(None);
         self.instance.destroy_surface_khr(self.data.surface, None);
 
@@ -358,7 +413,11 @@ impl App {
         Ok(())
     }
 
-    pub unsafe fn update_command_buffer(&mut self, image_index: usize) -> Result<()> {
+    pub unsafe fn update_command_buffer(
+        &mut self,
+        image_index: usize,
+        window: &Window,
+    ) -> Result<()> {
         //Approach 3: resetting command pools
 
         // Pick right command pool
@@ -433,6 +492,20 @@ impl App {
             .cmd_execute_commands(command_buffer, &secondary_command_buffers[..]);
 
         self.device.cmd_end_render_pass(command_buffer);
+
+        // GUI call appended here (can I do this in a secondary command buffer?)
+        self.gui.end_frame_and_render(
+            // window is not available here, so we need to pass it in — see note below
+            &window, // see note
+            &self.instance,
+            &self.device,
+            &self.data,
+            command_buffer,
+            self.data.gui_framebuffers[image_index],
+            image_index,
+            self.data.swapchain_extent,
+        )?;
+
         self.device.end_command_buffer(command_buffer)?;
 
         Ok(())
@@ -470,10 +543,10 @@ impl App {
         // UBO model matrix to push constant
 
         // let time = self.start.elapsed().as_secs_f32();
-        let time: f32 = 1.;
+        let time: f32 = 4.5;
 
         let model = Mat4::from_translation(vec3(0.0, y, z))
-            * Mat4::from_axis_angle(vec3(0.0, 0.5, -0.5), Deg(90.0) * time);
+            * Mat4::from_axis_angle(vec3(0.0, 0., 1.0), Deg(90.0) * time);
 
         let model_bytes =
             std::slice::from_raw_parts(&model as *const Mat4 as *const u8, size_of::<Mat4>());

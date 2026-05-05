@@ -1,6 +1,8 @@
 use vulkanalia::vk;
 use vulkanalia::Version;
 
+pub const ENGINE_TITLE: &str = "Garbo Engine";
+
 pub const WINDOW_WIDTH: u32 = 1920;
 pub const WINDOW_HEIGHT: u32 = 1080;
 
@@ -11,3 +13,6 @@ pub const VALIDATION_LAYER: vk::ExtensionName =
 pub const DEVICE_EXTENSIONS: &[vk::ExtensionName] = &[vk::KHR_SWAPCHAIN_EXTENSION.name];
 
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
+
+// Game variables
+pub const MOUSE_SENSITIVITY: f32 = 0.01;
