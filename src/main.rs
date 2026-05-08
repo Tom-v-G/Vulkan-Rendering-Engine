@@ -22,10 +22,14 @@ mod app;
 mod app_data;
 mod buffers;
 mod camera;
+mod chunk;
+mod chunk_rendering;
+mod chunkmesher;
 mod commands;
 mod constants;
 mod descriptors;
 mod device;
+mod gamestate;
 mod gui;
 mod images;
 mod input;
@@ -36,9 +40,11 @@ mod swapchain;
 mod textures;
 mod utils;
 mod vertex;
+mod voxel;
 
 use crate::app::RenderApp;
 use crate::constants::*;
+use crate::gamestate::GameState;
 use crate::input::{handle_keyboard_input, handle_mouse_input, Action, InputMap, InputState};
 
 struct RenderState {
@@ -184,76 +190,6 @@ fn main() -> Result<()> {
         runtime,
     };
     event_loop.run_app(&mut window_app);
-
-    // V needs to go
-    // let mut render_app: Option<RenderApp> = None;
-
-    // // App
-
-    // let mut minimized = false;
-
-    // let inputmap = InputMap::new();
-    // let mut input_state = InputState::new();
-
-    // let mut last_frame = Instant::now();
-
-    // event_loop.run_app(&mut window_app {
-    //     match event {
-    //         // Create app when first initialised
-    //         Event::Resumed => {
-    //             if app.is_none() {
-    //                 let window = elwt.create_window(
-    //                     Window::default_attributes()
-    //                         .with_title("Garbo Engine")
-    //                         .with_inner_size(LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT)),
-    //                 )?;
-    //                 let mut app = unsafe { App::create(&window)? };
-    //             }
-    //         }
-
-    //         // Request a redraw when all events were processed.
-    //         Event::AboutToWait => {
-    //             let now = Instant::now();
-    //             let dt = (now - last_frame).as_secs_f32();
-    //             last_frame = now;
-
-    //             update(&mut app, &mut input_state, dt, &inputmap);
-
-    //             if app.shutdown_triggered {
-    //                 exit_program(elwt, &mut app);
-    //             }
-    //             window.request_redraw();
-    //         }
-    //         Event::DeviceEvent { event, .. } => match event {
-    //             DeviceEvent::MouseMotion { delta } => handle_mouse_input(delta, &mut input_state),
-    //             _ => {}
-    //         },
-    //         Event::WindowEvent { event, .. } => match event {
-    //             // Render a frame if our Vulkan app is not being destroyed.
-    //             WindowEvent::RedrawRequested if !elwt.exiting() && !minimized => {
-    //                 unsafe { app.render(&window) }.unwrap()
-    //             }
-    //             // Mark window as resized
-    //             WindowEvent::Resized(size) => {
-    //                 if size.width == 0 || size.height == 0 {
-    //                     minimized = true;
-    //                 } else {
-    //                     minimized = false;
-    //                     app.resized = true;
-    //                 }
-    //             }
-    //             WindowEvent::KeyboardInput { event, .. } => {
-    //                 handle_keyboard_input(event, &mut input_state)
-    //             }
-    //             // Destroy our Vulkan app.
-    //             WindowEvent::CloseRequested => {
-    //                 exit_program(elwt, &mut app);
-    //             }
-    //             _ => {}
-    //         },
-    //         _ => {}
-    //     }
-    // })?;
 
     Ok(())
 }
