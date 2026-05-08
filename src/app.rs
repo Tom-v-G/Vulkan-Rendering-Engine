@@ -485,6 +485,9 @@ impl RenderApp {
             vk::SubpassContents::SECONDARY_COMMAND_BUFFERS,
         );
 
+        // Models are passed here
+        // Change this to chunks
+        //          V
         let secondary_command_buffers = (0..self.models)
             .map(|i| self.update_secondary_command_buffer(image_index, i))
             .collect::<Result<Vec<_>, _>>()?;
