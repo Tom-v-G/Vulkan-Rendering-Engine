@@ -44,7 +44,7 @@ mod voxel;
 
 use crate::app::RenderApp;
 use crate::constants::*;
-use crate::gamestate::GameState;
+// use crate::gamestate::GameState;
 use crate::input::{handle_keyboard_input, handle_mouse_input, Action, InputMap, InputState};
 
 struct RenderState {
@@ -189,7 +189,7 @@ fn main() -> Result<()> {
         renderstate: None,
         runtime,
     };
-    event_loop.run_app(&mut window_app);
+    let _ = event_loop.run_app(&mut window_app);
 
     Ok(())
 }

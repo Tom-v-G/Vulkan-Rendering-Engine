@@ -19,9 +19,9 @@ pub unsafe fn create_instance(
     data: &mut AppData,
 ) -> Result<Instance> {
     let application_info = vk::ApplicationInfo::builder()
-        .application_name(b"Vulkan Tutorial\0")
+        .application_name(b"Test\0")
         .application_version(vk::make_version(1, 0, 0))
-        .engine_name(b"No Engine\0")
+        .engine_name(b"Garbo Engine\0")
         .engine_version(vk::make_version(1, 0, 0))
         .api_version(vk::make_version(1, 0, 0));
 

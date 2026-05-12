@@ -1,4 +1,4 @@
-use crate::app_data::AppData;
+use crate::app_data::{AppData, DeletionQueue, FrameData};
 use crate::constants::*;
 use crate::device::QueueFamilyIndices;
 use crate::utils::*;
@@ -55,13 +55,14 @@ pub unsafe fn create_sync_objects(device: &Device, data: &mut AppData) -> Result
     let fence_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
 
     for _ in 0..MAX_FRAMES_IN_FLIGHT {
-        data.image_available_semaphores
-            .push(device.create_semaphore(&semaphore_info, None)?);
-        data.render_finished_semaphores
-            .push(device.create_semaphore(&semaphore_info, None)?);
+        let framedata = FrameData {
+            in_flight_fence: device.create_fence(&fence_info, None)?,
+            image_available_semaphore: device.create_semaphore(&semaphore_info, None)?,
+            render_finished_semaphore: device.create_semaphore(&semaphore_info, None)?,
+            deletion_queue: DeletionQueue::default(),
+        };
 
-        data.in_flight_fences
-            .push(device.create_fence(&fence_info, None)?);
+        data.frames.push(framedata);
     }
 
     data.images_in_flight = data

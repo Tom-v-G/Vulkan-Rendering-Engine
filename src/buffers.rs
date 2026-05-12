@@ -1,5 +1,5 @@
 use anyhow::Result;
-use std::ptr::copy_nonoverlapping as memcpy;
+use bytemuck::Pod;
 
 use vulkanalia::prelude::v1_0::*;
 
@@ -7,10 +7,9 @@ use crate::{
     app_data::AppData,
     commands::{begin_single_time_commands, end_single_time_commands},
     utils::get_memory_type_index,
-    vertex::Vertex,
 };
 
-type Mat4 = cgmath::Matrix4<f32>;
+use glam::Mat4;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
@@ -95,15 +94,15 @@ pub unsafe fn create_uniform_buffers(
     Ok(())
 }
 
-pub unsafe fn create_vertex_buffer(
+pub unsafe fn create_vertex_buffer<V: Pod>(
     instance: &Instance,
     device: &Device,
     physical_device: vk::PhysicalDevice,
-    vertices: &[Vertex],
+    vertices: &[V],
     graphics_queue: vk::Queue,
     command_pool: vk::CommandPool,
 ) -> Result<(vk::Buffer, vk::DeviceMemory)> {
-    let size = (size_of::<Vertex>() * vertices.len()) as u64;
+    let size = (size_of::<V>() * vertices.len()) as u64;
 
     let (staging_buffer, staging_buffer_memory) = create_buffer(
         instance,
@@ -114,10 +113,10 @@ pub unsafe fn create_vertex_buffer(
         vk::MemoryPropertyFlags::HOST_COHERENT | vk::MemoryPropertyFlags::HOST_VISIBLE,
     )?;
 
-    let memory = device.map_memory(staging_buffer_memory, 0, size, vk::MemoryMapFlags::empty())?;
+    let dst = device.map_memory(staging_buffer_memory, 0, size, vk::MemoryMapFlags::empty())?;
 
-    memcpy(vertices.as_ptr(), memory.cast(), vertices.len());
-
+    let bytes: &[u8] = bytemuck::cast_slice(vertices);
+    std::ptr::copy_nonoverlapping(bytes.as_ptr(), dst.cast(), bytes.len());
     device.unmap_memory(staging_buffer_memory);
 
     let (vertex_buffer, vertex_buffer_memory) = create_buffer(
@@ -144,15 +143,15 @@ pub unsafe fn create_vertex_buffer(
     Ok((vertex_buffer, vertex_buffer_memory))
 }
 
-pub unsafe fn create_index_buffer(
+pub unsafe fn create_index_buffer<I: Pod>(
     instance: &Instance,
     device: &Device,
     physical_device: vk::PhysicalDevice,
-    indices: &[u32],
+    indices: &[I],
     graphics_queue: vk::Queue,
     command_pool: vk::CommandPool,
 ) -> Result<(vk::Buffer, vk::DeviceMemory)> {
-    let size = (size_of::<u32>() * indices.len()) as u64;
+    let size = (size_of::<I>() * indices.len()) as u64;
 
     let (staging_buffer, staging_buffer_memory) = create_buffer(
         instance,
@@ -163,9 +162,10 @@ pub unsafe fn create_index_buffer(
         vk::MemoryPropertyFlags::HOST_COHERENT | vk::MemoryPropertyFlags::HOST_VISIBLE,
     )?;
 
-    let memory = device.map_memory(staging_buffer_memory, 0, size, vk::MemoryMapFlags::empty())?;
+    let dst = device.map_memory(staging_buffer_memory, 0, size, vk::MemoryMapFlags::empty())?;
 
-    memcpy(indices.as_ptr(), memory.cast(), indices.len());
+    let bytes: &[u8] = bytemuck::cast_slice(indices);
+    std::ptr::copy_nonoverlapping(bytes.as_ptr(), dst.cast(), bytes.len());
 
     device.unmap_memory(staging_buffer_memory);
 

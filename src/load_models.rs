@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 
-use cgmath::{vec2, vec3};
+use glam::{Vec2, Vec3};
 
 use anyhow::Result;
 use tobj::load_obj_buf;
@@ -69,7 +69,7 @@ pub fn load_model(data: &mut AppData) -> Result<()> {
 
             // TODO: make normalization correct
             let vertex = Vertex {
-                pos: vec3(
+                pos: Vec3::new(
                     (((model.mesh.positions[pos_offset] - x_min) / (x_max - x_min).abs()) - 0.5)
                         * 2.0,
                     (((model.mesh.positions[pos_offset + 1] - y_min) / (y_max - y_min).abs())
@@ -79,8 +79,8 @@ pub fn load_model(data: &mut AppData) -> Result<()> {
                         - 0.5)
                         * 2.0,
                 ),
-                color: vec3(1.0, 1.0, 1.0),
-                tex_coord: vec2(
+                color: Vec3::new(1.0, 1.0, 1.0),
+                tex_coord: Vec2::new(
                     model.mesh.texcoords[tex_coord_offset],
                     1.0 - model.mesh.texcoords[tex_coord_offset + 1],
                 ),

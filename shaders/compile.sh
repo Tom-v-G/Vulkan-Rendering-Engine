@@ -3,3 +3,6 @@
 
 /home/tom/Programs/vulkansdk-linux-x86_64-1.4.309.0/1.4.309.0/x86_64/bin/glslc shaders/egui/egui.vert -o shaders/egui/egui_vert.spv
 /home/tom/Programs/vulkansdk-linux-x86_64-1.4.309.0/1.4.309.0/x86_64/bin/glslc shaders/egui/egui.frag -o shaders/egui/egui_frag.spv
+
+/home/tom/Programs/vulkansdk-linux-x86_64-1.4.309.0/1.4.309.0/x86_64/bin/glslc shaders/voxel/shader.vert -o shaders/voxel/vert.spv
+/home/tom/Programs/vulkansdk-linux-x86_64-1.4.309.0/1.4.309.0/x86_64/bin/glslc shaders/voxel/shader.frag -o shaders/voxel/frag.spv

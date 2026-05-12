@@ -13,23 +13,23 @@ layout(binding = 0) uniform UniformBufferObject {
     mat4 proj;
 } ubo;
 
-layout(push_constant) uniform PushConstants{
-    mat4 model;
-} pcs;
+layout(push_constant) uniform ChunkPushConstants {
+    vec3 world_pos; // vec3 aligns to 16 bytes -> 12 bytes + 4 padding. Also needs to be added in the rust structs
+} cpcs;
 
-layout(location = 1) out uvec4 fragColor;
+layout(location = 1) out vec4 fragColor;
 
-const vec3 NORMALS[6] = vec3[6](
+const vec3 NORMALS[6] = vec3[](
     vec3( 1.0,  0.0,  0.0),  // 0: +X
     vec3(-1.0,  0.0,  0.0),  // 1: -X
     vec3( 0.0,  1.0,  0.0),  // 2: +Y
     vec3( 0.0, -1.0,  0.0),  // 3: -Y
     vec3( 0.0,  0.0,  1.0),  // 4: +Z
-    vec3( 0.0,  0.0, -1.0),  // 5: -Z
+    vec3( 0.0,  0.0, -1.0)  // 5: -Z
 );
 
 void main() {
-    gl_Position = ubo.proj * ubo.view * pcs.model * vec4(inPosition, 1.0);
-    fragColor = inColor;
+    gl_Position = ubo.proj * ubo.view * vec4(inPosition + 16.0 * cpcs.world_pos, 1.0); // Note: chunk size is hardcoded. add as uniform
+    fragColor = inColor / 255.0;
     // Normals unused for the moment
 }

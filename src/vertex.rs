@@ -1,13 +1,11 @@
 use std::hash::{Hash, Hasher};
 
+use bytemuck::{Pod, Zeroable};
+use glam::{Vec2, Vec3};
 use vulkanalia::vk::{self, HasBuilder};
 
-type Vec2 = cgmath::Vector2<f32>;
-type Vec3 = cgmath::Vector3<f32>;
-type Mat4 = cgmath::Matrix4<f32>;
-
 #[repr(C)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
 pub struct Vertex {
     pub pos: Vec3,
     pub color: Vec3,

@@ -6,7 +6,11 @@ use crate::images::get_depth_format;
 use crate::utils::*;
 use crate::vertex::Vertex;
 
-pub unsafe fn create_pipeline(device: &Device, data: &mut AppData) -> Result<()> {
+pub unsafe fn create_pipeline(
+    instance: &Instance,
+    device: &Device,
+    data: &mut AppData,
+) -> Result<()> {
     let vert = include_bytes!("../shaders/vertex_simple/vert.spv");
     let frag = include_bytes!("../shaders/vertex_simple/frag.spv");
 
@@ -131,6 +135,14 @@ pub unsafe fn create_pipeline(device: &Device, data: &mut AppData) -> Result<()>
     data.pipeline = device
         .create_graphics_pipelines(vk::PipelineCache::null(), &[info], None)?
         .0[0];
+
+    set_debug_name(
+        instance,
+        device,
+        data.pipeline.as_raw(),
+        vk::ObjectType::PIPELINE,
+        "Advanced models Pipeline",
+    )?;
 
     device.destroy_shader_module(vert_shader_module, None);
     device.destroy_shader_module(frag_shader_module, None);

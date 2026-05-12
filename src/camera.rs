@@ -1,23 +1,20 @@
-use cgmath::{point3, vec3, InnerSpace, Point3};
+use glam::{Mat4, Vec3};
 
 use crate::constants::*;
 
-type Vec3 = cgmath::Vector3<f32>;
-type Mat4 = cgmath::Matrix4<f32>;
-
 #[derive(Debug, Clone)]
 pub struct Camera {
-    eye: Point3<f32>, // Point3: point in space, Vec3: displacement vector
-    yaw: f32,         // rotation around Z (left/right), in radians
-    pitch: f32,       // rotation around right axis (up/down), in radians
+    eye: Vec3,  // Point3: point in space, Vec3: displacement vector
+    yaw: f32,   // rotation around Z (left/right), in radians
+    pitch: f32, // rotation around right axis (up/down), in radians
     up: Vec3,
 }
 
 impl Camera {
     pub fn new() -> Self {
         // Looking from (6,0,2) toward the origin
-        let eye = point3(6.0, 0.0, 2.0);
-        let target = point3(0.0, 0.0, 0.0);
+        let eye = Vec3::new(6.0, 0.0, 2.0);
+        let target = Vec3::new(0.0, 0.0, 0.0);
         let direction = (target - eye).normalize();
         Self {
             eye,
@@ -28,7 +25,7 @@ impl Camera {
     }
 
     fn direction(&self) -> Vec3 {
-        vec3(
+        Vec3::new(
             self.pitch.cos() * self.yaw.cos(),
             self.pitch.cos() * self.yaw.sin(),
             self.pitch.sin(),
@@ -40,27 +37,27 @@ impl Camera {
     }
 
     pub fn move_forward(&mut self, amount: f32) {
-        self.eye += self.direction() * amount;
+        self.eye += self.direction() * amount * MOVEMENT_SPEED;
     }
 
     pub fn move_backward(&mut self, amount: f32) {
-        self.eye -= self.direction() * amount;
+        self.eye -= self.direction() * amount * MOVEMENT_SPEED;
     }
 
     pub fn move_right(&mut self, amount: f32) {
-        self.eye += self.right() * amount;
+        self.eye += self.right() * amount * MOVEMENT_SPEED;
     }
 
     pub fn move_left(&mut self, amount: f32) {
-        self.eye -= self.right() * amount;
+        self.eye -= self.right() * amount * MOVEMENT_SPEED;
     }
 
     pub fn move_up(&mut self, amount: f32) {
-        self.eye += self.up * amount;
+        self.eye += self.up * amount * MOVEMENT_SPEED;
     }
 
     pub fn move_down(&mut self, amount: f32) {
-        self.eye -= self.up * amount;
+        self.eye -= self.up * amount * MOVEMENT_SPEED;
     }
 
     pub fn update_camera_look(&mut self, delta: (f64, f64)) {

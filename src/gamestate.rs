@@ -7,16 +7,16 @@ struct Player {
     health: u32,
 }
 
-//Chunkmanager
-struct ChunkManager {
-    chunks: HashMap<ChunkCoord, Chunk>,
-}
+// Chunkmanager
+// struct ChunkManager {
+//     chunks: HashMap<ChunkCoord, Chunk>,
+// }
 
-struct World {
-    chunkmanager: ChunkManager,
-}
+// struct World {
+//     chunkmanager: ChunkManager,
+// }
 
-pub struct GameState {
-    // player: Player,
-    world: World,
-}
+// pub struct GameState {
+//     // player: Player,
+//     world: World,
+// }

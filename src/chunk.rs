@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::constants::*;
 use crate::voxel::Voxel;
 
-type ChunkCoord = (i32, i32, i32);
+pub type ChunkCoord = (i32, i32, i32);
 
 pub struct Chunk {
     pub voxels: [Voxel; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE],

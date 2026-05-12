@@ -1,9 +1,11 @@
+use bytemuck::{Pod, Zeroable};
+
 use crate::chunk::Chunk;
 use crate::constants::*;
 use crate::voxel::Voxel;
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct VoxelVertex {
     // 16 bytes atm. No need to keep this aligned to multiples of 2.
     // Vulkan can handle different offset
@@ -313,11 +315,13 @@ fn emit_quad(
 
     // Winding order: counter-clockwise when viewed from outside
     // Flip winding for negative faces so normals point outward correctly
-    if face.is_positive() {
+    // Correct for flipped Y axis
+    if matches!(face, Face::PosX | Face::NegY | Face::PosZ) {
         mesh.indices
             .extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
     } else {
         mesh.indices
+            // .extend_from_slice(&[base, base + 3, base + 2, base, base + 2, base + 1]);
             .extend_from_slice(&[base, base + 2, base + 1, base, base + 3, base + 2]);
     }
 }

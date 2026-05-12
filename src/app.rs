@@ -1,10 +1,12 @@
 use anyhow::{anyhow, Result};
+use bytemuck::bytes_of;
 use egui::{FontId, RichText};
 use std::mem::size_of;
 use std::ptr::copy_nonoverlapping as memcpy;
 use std::time::Instant;
 // use winit::window::Window;
 use egui_winit::winit::window::Window;
+use rand::seq::{IndexedRandom, SliceRandom};
 
 use vulkanalia::loader::{LibloadingLoader, LIBRARY};
 use vulkanalia::prelude::v1_0::*;
@@ -18,6 +20,9 @@ use crate::buffers::{
     create_index_buffer, create_uniform_buffers, create_vertex_buffer, UniformBufferObject,
 };
 use crate::camera::Camera;
+use crate::chunk::{Chunk, ChunkCoord};
+use crate::chunk_rendering::{create_chunk_pipeline, ChunkPushConstants, GpuChunk};
+use crate::chunkmesher::MeshData;
 use crate::commands::{create_command_buffers, create_command_pools, create_sync_objects};
 use crate::constants::*;
 use crate::descriptors::{create_descriptor_pool, create_descriptor_sets};
@@ -32,13 +37,9 @@ use crate::pipeline::{
 };
 use crate::swapchain::{create_swapchain, create_swapchain_image_views};
 use crate::textures::{create_texture_image, create_texture_image_view, create_texture_sampler};
+use crate::voxel::Voxel;
 
-use cgmath::vec3;
-use cgmath::Deg;
-
-type Vec2 = cgmath::Vector2<f32>;
-type Vec3 = cgmath::Vector3<f32>;
-type Mat4 = cgmath::Matrix4<f32>;
+use glam::{Mat4, Vec3};
 
 pub struct RenderApp {
     pub entry: Entry,
@@ -52,6 +53,7 @@ pub struct RenderApp {
     pub models: usize,
     pub gui: Gui,
     pub shutdown_triggered: bool,
+    pub visible_chunks: MeshData,
 }
 
 impl RenderApp {
@@ -68,7 +70,7 @@ impl RenderApp {
         let models = 1;
         let shutdown_triggered = false;
 
-        println!("Creeating device");
+        println!("Creating device");
         data.surface = vk_window::create_surface(&instance, &window, &window)?;
         pick_physical_device(&instance, &mut data)?;
         let device = create_logical_device(&entry, &instance, &mut data)?;
@@ -78,7 +80,7 @@ impl RenderApp {
         create_swapchain_image_views(&device, &mut data)?;
         create_render_pass(&instance, &device, &mut data)?;
         data.descriptor_set_layout = create_descriptor_set_layout(&device)?;
-        create_pipeline(&device, &mut data)?;
+        create_pipeline(&instance, &device, &mut data)?;
         create_command_pools(&instance, &device, &mut data)?;
 
         println!("Creating Models");
@@ -123,6 +125,26 @@ impl RenderApp {
         println!("Creating GUI framebuffers");
         create_gui_framebuffers(&device, &mut data, &gui)?;
 
+        println!("Creating Voxel Pipeline");
+        create_chunk_pipeline(&device, &mut data)?;
+
+        // Temporary: create chunk meshdata to display.
+        let red_voxel = Voxel::new(255, 0, 0);
+        let green_voxel = Voxel::new(0, 255, 0);
+        let blue_voxel = Voxel::new(0, 0, 255);
+
+        const VOXEL_COUNT: usize = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
+        let voxel_options = [red_voxel, green_voxel, blue_voxel];
+        let voxels: [Voxel; VOXEL_COUNT] =
+            std::array::from_fn(|_| voxel_options.choose(&mut rand::rng()).unwrap().clone());
+        let active_voxels: [u64; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE / 64] =
+            std::array::from_fn(|_| rand::random());
+        // [u64::MAX; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE / 64];
+
+        let chunk = Chunk::create(voxels, active_voxels, (0, 0, 0));
+
+        let visible_chunks = chunk.mesh([None; 6]);
+
         println!("App created");
         Ok(Self {
             entry,
@@ -136,6 +158,7 @@ impl RenderApp {
             models,
             gui,
             shutdown_triggered,
+            visible_chunks,
         })
     }
 
@@ -145,7 +168,8 @@ impl RenderApp {
         create_swapchain(window, &self.instance, &self.device, &mut self.data)?;
         create_swapchain_image_views(&self.device, &mut self.data)?;
         create_render_pass(&self.instance, &self.device, &mut self.data)?;
-        create_pipeline(&self.device, &mut self.data)?;
+        create_pipeline(&self.instance, &self.device, &mut self.data)?;
+        create_chunk_pipeline(&self.device, &mut self.data)?;
         create_color_objects(&self.instance, &self.device, &mut self.data)?;
         create_depth_objects(&self.instance, &self.device, &mut self.data)?;
         create_framebuffers(&self.device, &mut self.data)?;
@@ -172,13 +196,21 @@ impl RenderApp {
 
     /// Renders a frame for our Vulkan app.
     pub unsafe fn render(&mut self, window: &Window) -> Result<()> {
-        self.device
-            .wait_for_fences(&[self.data.in_flight_fences[self.frame]], true, u64::MAX)?;
+        self.device.wait_for_fences(
+            &[self.data.frames[self.frame].in_flight_fence],
+            true,
+            u64::MAX,
+        )?;
+
+        // Destroy items on the deletion queue
+        self.data.frames[self.frame]
+            .deletion_queue
+            .flush(&self.device);
 
         let result = self.device.acquire_next_image_khr(
             self.data.swapchain,
             u64::MAX,
-            self.data.image_available_semaphores[self.frame],
+            self.data.frames[self.frame].image_available_semaphore,
             vk::Fence::null(),
         );
 
@@ -196,12 +228,49 @@ impl RenderApp {
             )?;
         }
 
-        self.data.images_in_flight[image_index as usize] = self.data.in_flight_fences[self.frame];
+        self.data.images_in_flight[image_index as usize] =
+            self.data.frames[self.frame].in_flight_fence;
 
         // ---- GUI ----
         // probably a cleaner way to do this
+        let mut wireframe = false;
+        let mut show_normals = false;
+        let mut render_distance = 3;
 
         let ctx = self.gui.begin_frame(window);
+        egui::SidePanel::right("Sidepanel")
+            .default_width(300.0)
+            .width_range(250.0..=std::f32::INFINITY)
+            .resizable(true)
+            .show(ctx, |ui| {
+                ui.heading("Engine test");
+
+                egui::CollapsingHeader::new("Performance")
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        egui::Grid::new("perf_grid").show(ui, |ui| {
+                            ui.label("FPS");
+                            ui.label(format!("69"));
+                            ui.end_row();
+
+                            ui.label("Chunks");
+                            ui.label(format!("1"));
+                            ui.end_row();
+                        });
+                    });
+
+                egui::CollapsingHeader::new("Rendering")
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        ui.checkbox(&mut wireframe, "Wireframe");
+                        ui.checkbox(&mut show_normals, "Normals");
+
+                        ui.add(
+                            egui::Slider::new(&mut render_distance, 2..=32).text("Render Distance"),
+                        );
+                    });
+            });
+
         egui::Window::new("Debug").show(ctx, |ui| {
             ui.label(RichText::new("Large Text").font(FontId::proportional(40.0)));
             ui.label(
@@ -218,11 +287,11 @@ impl RenderApp {
         self.update_command_buffer(image_index, window)?; // <- GUI render also happens in here
         self.update_uniform_buffer(image_index, &self.camera)?;
 
-        let wait_semaphores = &[self.data.image_available_semaphores[self.frame]];
+        let wait_semaphores = &[self.data.frames[self.frame].image_available_semaphore];
         let wait_stages = &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
 
         let command_buffers = &[self.data.command_buffers[image_index as usize]];
-        let signal_semaphores = &[self.data.render_finished_semaphores[self.frame]];
+        let signal_semaphores = &[self.data.frames[self.frame].render_finished_semaphore];
         let submit_info = vk::SubmitInfo::builder()
             .wait_semaphores(wait_semaphores)
             .wait_dst_stage_mask(wait_stages)
@@ -230,12 +299,12 @@ impl RenderApp {
             .signal_semaphores(signal_semaphores);
 
         self.device
-            .reset_fences(&[self.data.in_flight_fences[self.frame]])?;
+            .reset_fences(&[self.data.frames[self.frame].in_flight_fence])?;
 
         self.device.queue_submit(
             self.data.graphics_queue,
             &[submit_info],
-            self.data.in_flight_fences[self.frame],
+            self.data.frames[self.frame].in_flight_fence,
         )?;
 
         let swapchains = &[self.data.swapchain];
@@ -287,17 +356,10 @@ impl RenderApp {
             .free_memory(self.data.vertex_buffer_memory, None);
 
         self.data
-            .in_flight_fences
-            .iter()
-            .for_each(|f| self.device.destroy_fence(*f, None));
-        self.data
-            .render_finished_semaphores
-            .iter()
-            .for_each(|s| self.device.destroy_semaphore(*s, None));
-        self.data
-            .image_available_semaphores
-            .iter()
-            .for_each(|s| self.device.destroy_semaphore(*s, None));
+            .frames
+            .iter_mut()
+            .for_each(|f| f.destroy(&self.device));
+
         self.device
             .destroy_command_pool(self.data.command_pool, None);
 
@@ -347,10 +409,14 @@ impl RenderApp {
             .iter()
             .for_each(|f| self.device.destroy_framebuffer(*f, None));
         // uncomment when switching to single command pool
-        // self.device.free_command_buffers(self.data.command_pool, &self.data.command_buffers);
+        // self.device
+        //     .free_command_buffers(self.data.command_pool, &self.data.command_buffers);
         self.device.destroy_pipeline(self.data.pipeline, None);
         self.device
             .destroy_pipeline_layout(self.data.pipeline_layout, None);
+        self.device.destroy_pipeline(self.data.voxel_pipeline, None);
+        self.device
+            .destroy_pipeline_layout(self.data.voxel_pipeline_layout, None);
         self.device.destroy_render_pass(self.data.render_pass, None);
         self.data
             .swapchain_image_views
@@ -368,7 +434,8 @@ impl RenderApp {
 
         let view = camera.view_matrix();
 
-        let correction = Mat4::new(
+        // Update this to rows if incorrect
+        let correction = Mat4::from_cols_array(&[
             1.0,
             0.0,
             0.0,
@@ -386,16 +453,15 @@ impl RenderApp {
             0.0,
             1.0 / 2.0,
             1.0,
-        );
+        ]);
 
-        let proj = correction
-            * cgmath::perspective(
-                Deg(45.0),
-                self.data.swapchain_extent.width as f32 / self.data.swapchain_extent.height as f32,
-                0.1,
-                10.0,
-            );
+        let fov_y = 45.0_f32.to_radians(); // 45 degrees in radians
+        let aspect_ratio =
+            self.data.swapchain_extent.width as f32 / self.data.swapchain_extent.height as f32;
+        let near = 0.1;
+        let far = 100.0;
 
+        let proj = correction * Mat4::perspective_rh(fov_y, aspect_ratio, near, far);
         let ubo = UniformBufferObject { view, proj };
 
         let memory = self.device.map_memory(
@@ -482,17 +548,31 @@ impl RenderApp {
         self.device.cmd_begin_render_pass(
             command_buffer,
             &info,
-            vk::SubpassContents::SECONDARY_COMMAND_BUFFERS,
+            // vk::SubpassContents::SECONDARY_COMMAND_BUFFERS, //only works if all rendering is done in SCBs
+            vk::SubpassContents::INLINE,
         );
 
-        // Models are passed here
-        // Change this to chunks
-        //          V
-        let secondary_command_buffers = (0..self.models)
-            .map(|i| self.update_secondary_command_buffer(image_index, i))
-            .collect::<Result<Vec<_>, _>>()?;
-        self.device
-            .cmd_execute_commands(command_buffer, &secondary_command_buffers[..]);
+        // // Models are passed here
+        // let secondary_command_buffers = (0..self.models)
+        //     .map(|i| self.update_secondary_command_buffer(image_index, i))
+        //     .collect::<Result<Vec<_>, _>>()?;
+
+        // if !secondary_command_buffers.is_empty() {
+        //     self.device
+        //         .cmd_execute_commands(command_buffer, &secondary_command_buffers[..]);
+        // }
+
+        // Draw chunks on the primary buffer (for now)
+        let mut gpu_chunk = GpuChunk::new(
+            &self.instance,
+            &self.device,
+            self.data.physical_device,
+            self.data.graphics_queue,
+            self.data.command_pool,
+            &self.visible_chunks,
+            (0, 0, 0),
+        )?;
+        self.draw_chunks(command_buffer, &[&gpu_chunk], image_index)?;
 
         self.device.cmd_end_render_pass(command_buffer);
 
@@ -510,6 +590,14 @@ impl RenderApp {
         )?;
 
         self.device.end_command_buffer(command_buffer)?;
+
+        // queue gpu chunks for deletion
+        self.data.frames[self.frame]
+            .deletion_queue
+            .push(gpu_chunk.vertex_buffer, gpu_chunk.vertex_buffer_memory);
+        self.data.frames[self.frame]
+            .deletion_queue
+            .push(gpu_chunk.index_buffer, gpu_chunk.index_buffer_memory);
 
         Ok(())
     }
@@ -548,8 +636,8 @@ impl RenderApp {
         // let time = self.start.elapsed().as_secs_f32();
         let time: f32 = 4.5;
 
-        let model = Mat4::from_translation(vec3(0.0, y, z))
-            * Mat4::from_axis_angle(vec3(0.0, 0., 1.0), Deg(90.0) * time);
+        let model = Mat4::from_translation(Vec3::new(0.0, y, z))
+            * Mat4::from_axis_angle(Vec3::new(0.0, 0., 1.0), 90.0_f32.to_radians() * time);
 
         let model_bytes =
             std::slice::from_raw_parts(&model as *const Mat4 as *const u8, size_of::<Mat4>());
@@ -611,5 +699,60 @@ impl RenderApp {
         self.device.end_command_buffer(command_buffer)?;
 
         Ok(command_buffer)
+    }
+
+    pub unsafe fn draw_chunks(
+        &self,
+        command_buffer: vk::CommandBuffer,
+        visible_chunks: &[&GpuChunk],
+        image_index: usize,
+    ) -> Result<()> {
+        // Bind pipeline once — all chunks share the same pipeline
+        self.device.cmd_bind_pipeline(
+            command_buffer,
+            vk::PipelineBindPoint::GRAPHICS,
+            self.data.voxel_pipeline,
+        );
+
+        // Bind global descriptor set once (camera UBO)
+        self.device.cmd_bind_descriptor_sets(
+            command_buffer,
+            vk::PipelineBindPoint::GRAPHICS,
+            self.data.voxel_pipeline_layout,
+            0,
+            &[self.data.descriptor_sets[image_index]],
+            &[],
+        );
+
+        for chunk in visible_chunks {
+            // Per-chunk world position as a push constant
+            let push = ChunkPushConstants {
+                world_pos: [
+                    chunk.world_pos.0 as f32 * CHUNK_SIZE as f32,
+                    chunk.world_pos.1 as f32 * CHUNK_SIZE as f32,
+                    chunk.world_pos.2 as f32 * CHUNK_SIZE as f32,
+                ],
+            };
+            self.device.cmd_push_constants(
+                command_buffer,
+                self.data.voxel_pipeline_layout,
+                vk::ShaderStageFlags::VERTEX,
+                0,
+                bytes_of(&push),
+            );
+
+            self.device
+                .cmd_bind_vertex_buffers(command_buffer, 0, &[chunk.vertex_buffer], &[0]);
+            self.device.cmd_bind_index_buffer(
+                command_buffer,
+                chunk.index_buffer,
+                0,
+                vk::IndexType::UINT32,
+            );
+            self.device
+                .cmd_draw_indexed(command_buffer, chunk.index_count, 1, 0, 0, 0);
+        }
+
+        return Ok(());
     }
 }
