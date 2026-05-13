@@ -16,6 +16,6 @@ pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
 // Game variables
 pub const MOUSE_SENSITIVITY: f32 = 0.01;
-pub const MOVEMENT_SPEED: f32 = 3.0;
+pub const MOVEMENT_SPEED: f32 = 10.0;
 
 pub const CHUNK_SIZE: usize = 16;

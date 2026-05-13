@@ -87,6 +87,7 @@ pub unsafe fn create_texture_image(
         data.command_pool,
         staging_buffer,
         data.texture_image,
+        vk::Offset3D { x: 0, y: 0, z: 0 },
         width,
         height,
     )?;

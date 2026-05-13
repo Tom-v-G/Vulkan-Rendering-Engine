@@ -18,3 +18,4 @@ egui-winit = "0.33.3"
 bytemuck = "1.25.0"
 glam = {version = "0.32.1", features = ["bytemuck"]}
 rand = "0.10.1"
+sysinfo = "0.38.4"

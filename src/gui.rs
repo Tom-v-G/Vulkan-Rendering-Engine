@@ -1,5 +1,4 @@
 // all (e)GUI related code
-use anyhow::{anyhow, Result};
 use egui_winit::winit::window::Window;
 use vulkanalia::prelude::v1_0::*;
 // use winit::window::Window;
@@ -9,11 +8,10 @@ use std::ptr::copy_nonoverlapping as memcpy;
 
 use crate::app_data::AppData;
 use crate::buffers::create_buffer;
-use crate::commands::{begin_single_time_commands, end_single_time_commands};
 use crate::images::{
     copy_buffer_to_image, create_image, create_image_view, transition_image_layout,
 };
-use crate::utils::create_shader_module;
+use crate::utils::*;
 
 // Matches the push constant block in the egui vertex shader:
 // layout(push_constant) uniform PushConstants {
@@ -52,6 +50,9 @@ pub struct Gui {
     font_image_memory: vk::DeviceMemory,
     pub font_image_view: vk::ImageView,
     font_sampler: vk::Sampler,
+
+    atlas_width: u32,
+    atlas_height: u32,
 
     // One descriptor set per swapchain image
     descriptor_pool: vk::DescriptorPool,
@@ -434,6 +435,10 @@ impl Gui {
             });
         }
 
+        // Initialization
+        let atlas_width = 1;
+        let atlas_height = 1;
+
         Ok(Self {
             egui_ctx,
             egui_winit,
@@ -448,6 +453,8 @@ impl Gui {
             descriptor_pool,
             descriptor_sets,
             frame_buffers,
+            atlas_width,
+            atlas_height,
         })
     }
 
@@ -809,15 +816,37 @@ impl Gui {
 
         let width = delta.image.width() as u32;
         let height = delta.image.height() as u32;
-        let size = pixels.len() as u64;
+        let upload_size = pixels.len() as u64;
+
+        // Detect if this is a partial or full atlas upload
+        let is_partial_update = delta.pos.is_some();
+
+        // Position inside the atlas
+        let [offset_x, offset_y] = delta.pos.unwrap_or([0, 0]);
+
+        //
+        let required_width = if is_partial_update {
+            self.atlas_width.max(offset_x as u32 + width)
+        } else {
+            width
+        };
+
+        let required_height = if is_partial_update {
+            self.atlas_height.max(offset_y as u32 + height)
+        } else {
+            height
+        };
+
+        let needs_recreate =
+            required_width > self.atlas_width || required_height > self.atlas_height;
 
         // If the atlas grew (egui reallocated it), we need to recreate the
         // GPU image at the new size before uploading.
-        let current_requirements = device.get_image_memory_requirements(self.font_image);
 
-        let needed_size = (width * height * 4) as u64;
+        if needs_recreate {
+            // wait until ready
+            device.device_wait_idle()?;
 
-        if needed_size > current_requirements.size {
             // Destroy old resources
             device.destroy_image_view(self.font_image_view, None);
             device.destroy_image(self.font_image, None);
@@ -828,8 +857,8 @@ impl Gui {
                 instance,
                 device,
                 data.physical_device,
-                width,
-                height,
+                required_width,
+                required_height,
                 1,
                 vk::SampleCountFlags::_1,
                 vk::Format::R8G8B8A8_SRGB,
@@ -850,6 +879,9 @@ impl Gui {
             self.font_image_memory = new_memory;
             self.font_image_view = new_view;
 
+            self.atlas_width = required_width;
+            self.atlas_height = required_height;
+
             // Update all descriptor sets to point at the new image view
             for &set in &self.descriptor_sets {
                 let image_info = vk::DescriptorImageInfo::builder()
@@ -859,6 +891,7 @@ impl Gui {
                     .build();
 
                 let image_infos = &[image_info];
+
                 let write = vk::WriteDescriptorSet::builder()
                     .dst_set(set)
                     .dst_binding(0)
@@ -875,37 +908,50 @@ impl Gui {
             instance,
             device,
             data.physical_device,
-            size,
+            upload_size,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
         )?;
 
-        let dst = device.map_memory(staging_memory, 0, size, vk::MemoryMapFlags::empty())?;
+        let dst = device.map_memory(staging_memory, 0, upload_size, vk::MemoryMapFlags::empty())?;
         memcpy(pixels.as_ptr(), dst.cast(), pixels.len());
         device.unmap_memory(staging_memory);
 
-        // Transition → transfer destination → shader read
+        // Transition image layout
+        let old_layout = if needs_recreate || !is_partial_update {
+            vk::ImageLayout::UNDEFINED
+        } else {
+            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+        };
+
         transition_image_layout(
             device,
             data.graphics_queue,
             data.command_pool,
             self.font_image,
             vk::Format::R8G8B8A8_SRGB,
-            vk::ImageLayout::UNDEFINED,
+            old_layout,
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             1,
         )?;
 
+        // Copy image to buffer
         copy_buffer_to_image(
             device,
             data.graphics_queue,
             data.command_pool,
             staging_buffer,
             self.font_image,
+            vk::Offset3D {
+                x: offset_x as i32,
+                y: offset_y as i32,
+                z: 0,
+            },
             width,
             height,
         )?;
 
+        // Transition back for shader sampling
         transition_image_layout(
             device,
             data.graphics_queue,
@@ -917,6 +963,7 @@ impl Gui {
             1,
         )?;
 
+        // Cleanup
         device.destroy_buffer(staging_buffer, None);
         device.free_memory(staging_memory, None);
 

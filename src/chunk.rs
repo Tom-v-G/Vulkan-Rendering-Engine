@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::constants::*;
 use crate::voxel::Voxel;
 
@@ -45,7 +43,7 @@ impl Chunk {
         let word = idx / 64;
         let bit = idx % 64;
         if val {
-            self.active_voxels[word] |= (1u64 << bit);
+            self.active_voxels[word] |= 1u64 << bit;
         } else {
             self.active_voxels[word] &= !(1u64 << bit);
         }

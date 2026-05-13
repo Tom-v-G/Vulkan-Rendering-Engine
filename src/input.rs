@@ -4,8 +4,6 @@ use winit::{
     keyboard::{KeyCode, PhysicalKey},
 };
 
-use crate::{app::RenderApp, input};
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Action {
     DecreaseModels,
@@ -84,21 +82,27 @@ impl InputMap {
 }
 
 pub fn handle_keyboard_input(event: KeyEvent, input_state: &mut InputState, input_map: &InputMap) {
-    if let PhysicalKey::Code(code) = event.physical_key {
-        match event.state {
-            ElementState::Pressed => {
-                if Action::CONTINUOUS_PRESS.contains(input_map.bindings.get(&code).unwrap()) {
-                    input_state.continuous_pressed_keys.insert(code);
-                } else if Action::SINGLE_PRESS.contains(input_map.bindings.get(&code).unwrap()) {
-                    input_state.single_pressed_keys.insert(code);
+    if let PhysicalKey::Code(keycode) = event.physical_key {
+        // check if input binding exists
+        if let Some(code) = input_map.bindings.get(&keycode) {
+            match event.state {
+                ElementState::Pressed => {
+                    if Action::CONTINUOUS_PRESS.contains(input_map.bindings.get(&keycode).unwrap())
+                    {
+                        input_state.continuous_pressed_keys.insert(keycode);
+                    } else if Action::SINGLE_PRESS
+                        .contains(input_map.bindings.get(&keycode).unwrap())
+                    {
+                        input_state.single_pressed_keys.insert(keycode);
+                    }
+                }
+                ElementState::Released => {
+                    if Action::CONTINUOUS_PRESS.contains(input_map.bindings.get(&keycode).unwrap())
+                    {
+                        input_state.continuous_pressed_keys.remove(&keycode);
+                    }
                 }
             }
-            ElementState::Released => {
-                if Action::CONTINUOUS_PRESS.contains(input_map.bindings.get(&code).unwrap()) {
-                    input_state.continuous_pressed_keys.remove(&code);
-                }
-            }
-            _ => {}
         }
     }
 }

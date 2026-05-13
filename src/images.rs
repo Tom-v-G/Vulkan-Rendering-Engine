@@ -120,6 +120,13 @@ pub unsafe fn transition_image_layout(
                 vk::PipelineStageFlags::TOP_OF_PIPE,
                 vk::PipelineStageFlags::FRAGMENT_SHADER,
             ),
+            //Layout after initial texturing has been created for the GUI
+            (vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL, vk::ImageLayout::TRANSFER_DST_OPTIMAL) => (
+                vk::AccessFlags::SHADER_READ,
+                vk::AccessFlags::TRANSFER_WRITE,
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                vk::PipelineStageFlags::TRANSFER,
+            ),
             _ => return Err(anyhow!("Unsupported image layout transition!")),
         };
 
@@ -173,8 +180,9 @@ pub unsafe fn copy_buffer_to_image(
     device: &Device,
     graphics_queue: vk::Queue,
     command_pool: vk::CommandPool,
-    buffer: vk::Buffer,
+    src_buffer: vk::Buffer,
     image: vk::Image,
+    image_offset: vk::Offset3D,
     width: u32,
     height: u32,
 ) -> Result<()> {
@@ -191,7 +199,7 @@ pub unsafe fn copy_buffer_to_image(
         .buffer_row_length(0)
         .buffer_image_height(0)
         .image_subresource(subresource)
-        .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
+        .image_offset(image_offset)
         .image_extent(vk::Extent3D {
             width,
             height,
@@ -200,7 +208,7 @@ pub unsafe fn copy_buffer_to_image(
 
     device.cmd_copy_buffer_to_image(
         command_buffer,
-        buffer,
+        src_buffer,
         image,
         vk::ImageLayout::TRANSFER_DST_OPTIMAL,
         &[region],

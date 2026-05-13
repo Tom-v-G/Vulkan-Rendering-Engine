@@ -7,12 +7,9 @@
 
 use std::time::Instant;
 
-use anyhow::{anyhow, Result};
-
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{DeviceEvent, ElementState};
-use winit::event::{Event, WindowEvent};
+use winit::event::{DeviceEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
@@ -35,6 +32,7 @@ mod images;
 mod input;
 mod instance;
 mod load_models;
+mod metrics;
 mod pipeline;
 mod swapchain;
 mod textures;
@@ -46,6 +44,8 @@ use crate::app::RenderApp;
 use crate::constants::*;
 // use crate::gamestate::GameState;
 use crate::input::{handle_keyboard_input, handle_mouse_input, Action, InputMap, InputState};
+use crate::metrics::EngineMetrics;
+use crate::utils::*;
 
 struct RenderState {
     window: Window,
@@ -56,7 +56,7 @@ struct RuntimeState {
     minimized: bool,
     inputmap: InputMap,
     inputstate: InputState,
-    last_frame: Instant,
+    metrics: EngineMetrics,
 }
 
 struct WindowApp {
@@ -114,9 +114,12 @@ impl ApplicationHandler for WindowApp {
                 event_loop.exit();
             }
             // Redraw the application.
-            WindowEvent::RedrawRequested if !self.runtime.minimized => {
-                unsafe { renderstate.render_app.render(&renderstate.window) }.unwrap()
+            WindowEvent::RedrawRequested if !self.runtime.minimized => unsafe {
+                renderstate
+                    .render_app
+                    .render(&renderstate.window, &self.runtime)
             }
+            .unwrap(),
             // Mark window as resized
             WindowEvent::Resized(size) => {
                 if size.width == 0 || size.height == 0 {
@@ -157,22 +160,13 @@ impl ApplicationHandler for WindowApp {
     // Process all events
     // Request a redraw when all events were processed.
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        let now = Instant::now();
-        let dt = (now - self.runtime.last_frame).as_secs_f32();
-        self.runtime.last_frame = now;
-
         if self.renderstate.is_none() {
             return;
         }
 
         // Handle update
         let renderstate = self.renderstate.as_mut().unwrap();
-        update(
-            &mut renderstate.render_app,
-            &mut self.runtime.inputstate,
-            dt,
-            &self.runtime.inputmap,
-        );
+        update(&mut renderstate.render_app, &mut self.runtime);
 
         // Handle shutdown
         if renderstate.render_app.shutdown_triggered {
@@ -191,11 +185,11 @@ fn main() -> Result<()> {
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll); // Note: ControlFlow::WaitUntil might give better frame pacing
 
-    let mut runtime = RuntimeState {
+    let runtime = RuntimeState {
         minimized: false,
         inputmap: InputMap::new(),
         inputstate: InputState::new(),
-        last_frame: Instant::now(),
+        metrics: EngineMetrics::new(),
     };
 
     let mut window_app = WindowApp {
@@ -220,11 +214,15 @@ fn exit_program(eventloop: &ActiveEventLoop, render_app: &mut RenderApp) {
     }
 }
 
-fn update(app: &mut RenderApp, input: &mut InputState, dt: f32, input_map: &InputMap) {
-    const SPEED: f32 = 5.0; // units per second
-    let velocity = SPEED * dt;
+fn update(app: &mut RenderApp, runtime: &mut RuntimeState) {
+    let input_state = &mut runtime.inputstate;
+    let input_map = &runtime.inputmap;
 
-    for key in &input.continuous_pressed_keys {
+    let dt = runtime.metrics.dt();
+    let velocity = MOVEMENT_SPEED * dt;
+
+    // Control interactions
+    for key in &input_state.continuous_pressed_keys {
         if let Some(action) = input_map.get_action(&key) {
             if !app.menu_mode {
                 match action {
@@ -240,7 +238,7 @@ fn update(app: &mut RenderApp, input: &mut InputState, dt: f32, input_map: &Inpu
             }
         }
     }
-    let pressed: Vec<_> = input.single_pressed_keys.iter().copied().collect();
+    let pressed: Vec<_> = input_state.single_pressed_keys.iter().copied().collect();
 
     for key in pressed {
         if let Some(action) = input_map.get_action(&key) {
@@ -250,11 +248,16 @@ fn update(app: &mut RenderApp, input: &mut InputState, dt: f32, input_map: &Inpu
                 _ => {}
             }
         }
-        input.single_pressed_keys.remove(&key);
+        input_state.single_pressed_keys.remove(&key);
     }
 
     if !app.menu_mode {
-        app.camera.update_camera_look(input.mouse_delta);
+        app.camera.update_camera_look(input_state.mouse_delta);
     }
-    input.mouse_delta = (0., 0.);
+    input_state.mouse_delta = (0., 0.);
+
+    // Game updates
+
+    // Metric collection
+    runtime.metrics.update();
 }

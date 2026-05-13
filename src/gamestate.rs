@@ -16,7 +16,8 @@ struct Player {
 //     chunkmanager: ChunkManager,
 // }
 
-// pub struct GameState {
-//     // player: Player,
-//     world: World,
-// }
+pub struct GameState {
+    // player: Player,
+    // world: World,
+    time: f32,
+}

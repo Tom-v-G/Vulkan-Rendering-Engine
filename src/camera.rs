@@ -37,27 +37,27 @@ impl Camera {
     }
 
     pub fn move_forward(&mut self, amount: f32) {
-        self.eye += self.direction() * amount * MOVEMENT_SPEED;
+        self.eye += self.direction() * amount;
     }
 
     pub fn move_backward(&mut self, amount: f32) {
-        self.eye -= self.direction() * amount * MOVEMENT_SPEED;
+        self.eye -= self.direction() * amount;
     }
 
     pub fn move_right(&mut self, amount: f32) {
-        self.eye += self.right() * amount * MOVEMENT_SPEED;
+        self.eye += self.right() * amount;
     }
 
     pub fn move_left(&mut self, amount: f32) {
-        self.eye -= self.right() * amount * MOVEMENT_SPEED;
+        self.eye -= self.right() * amount;
     }
 
     pub fn move_up(&mut self, amount: f32) {
-        self.eye += self.up * amount * MOVEMENT_SPEED;
+        self.eye += self.up * amount;
     }
 
     pub fn move_down(&mut self, amount: f32) {
-        self.eye -= self.up * amount * MOVEMENT_SPEED;
+        self.eye -= self.up * amount;
     }
 
     pub fn update_camera_look(&mut self, delta: (f64, f64)) {

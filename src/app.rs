@@ -24,7 +24,6 @@ use crate::chunk::{Chunk, ChunkCoord};
 use crate::chunk_rendering::{create_chunk_pipeline, ChunkPushConstants, GpuChunk};
 use crate::chunkmesher::MeshData;
 use crate::commands::{create_command_buffers, create_command_pools, create_sync_objects};
-use crate::constants::*;
 use crate::descriptors::{create_descriptor_pool, create_descriptor_sets};
 use crate::device::{create_logical_device, pick_physical_device};
 use crate::gui::Gui;
@@ -38,6 +37,7 @@ use crate::pipeline::{
 use crate::swapchain::{create_swapchain, create_swapchain_image_views};
 use crate::textures::{create_texture_image, create_texture_image_view, create_texture_sampler};
 use crate::voxel::Voxel;
+use crate::{constants::*, RuntimeState};
 
 use glam::{Mat4, Vec3};
 
@@ -198,7 +198,7 @@ impl RenderApp {
     }
 
     /// Renders a frame for our Vulkan app.
-    pub unsafe fn render(&mut self, window: &Window) -> Result<()> {
+    pub unsafe fn render(&mut self, window: &Window, runtime: &RuntimeState) -> Result<()> {
         self.device.wait_for_fences(
             &[self.data.frames[self.frame].in_flight_fence],
             true,
@@ -255,7 +255,13 @@ impl RenderApp {
                 .show(ui, |ui| {
                     egui::Grid::new("perf_grid").show(ui, |ui| {
                         ui.label("FPS");
-                        ui.label(format!("69"));
+                        ui.label(format!("{:.1}", runtime.metrics.frametimer.fps()));
+                        ui.end_row();
+                        ui.label("CPU");
+                        ui.label(format!("{:.2} %", runtime.metrics.cpu_usage));
+                        ui.end_row();
+                        ui.label("RAM");
+                        ui.label(format!("{} mb", runtime.metrics.memory_mb));
                         ui.end_row();
 
                         ui.label("Chunks");
@@ -275,9 +281,11 @@ impl RenderApp {
                     ui.add(egui::Slider::new(&mut render_distance, 2..=32).text("Render Distance"));
                 });
 
-                if self.menu_mode {
-                    ui.label(RichText::new("Menu Mode").font(FontId::proportional(25.0)));
-                }
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+                    if self.menu_mode {
+                        ui.label(RichText::new("Menu Mode").font(FontId::proportional(25.0)));
+                    }
+                })
             });
 
         egui::Window::new("Debug").show(ctx, |ui| {
@@ -572,7 +580,7 @@ impl RenderApp {
         // }
 
         // Draw chunks on the primary buffer (for now)
-        let mut gpu_chunk = GpuChunk::new(
+        let gpu_chunk = GpuChunk::new(
             &self.instance,
             &self.device,
             self.data.physical_device,
