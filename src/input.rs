@@ -6,7 +6,7 @@ use winit::{
 
 use crate::{app::RenderApp, input};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Action {
     DecreaseModels,
     IncreaseModels,
@@ -18,20 +18,37 @@ pub enum Action {
     MoveUp,
     MoveDown,
 
+    SetMenuMode,
     Quit,
 }
 
+impl Action {
+    const CONTINUOUS_PRESS: [Action; 6] = [
+        Action::MoveForward,
+        Action::MoveBackward,
+        Action::MoveLeft,
+        Action::MoveRight,
+        Action::MoveUp,
+        Action::MoveDown,
+    ];
+
+    const SINGLE_PRESS: [Action; 2] = [Action::SetMenuMode, Action::Quit];
+}
+
 pub struct InputState {
-    pub pressed_keys: HashSet<KeyCode>,
+    pub continuous_pressed_keys: HashSet<KeyCode>,
+    pub single_pressed_keys: HashSet<KeyCode>,
     pub mouse_delta: (f64, f64),
 }
 
 impl InputState {
     pub fn new() -> Self {
-        let pressed_keys: HashSet<KeyCode> = HashSet::new();
+        let continuous_pressed_keys: HashSet<KeyCode> = HashSet::new();
+        let single_pressed_keys: HashSet<KeyCode> = HashSet::new();
         let mouse_delta = (0., 0.);
         return Self {
-            pressed_keys,
+            continuous_pressed_keys,
+            single_pressed_keys,
             mouse_delta,
         };
     }
@@ -56,6 +73,8 @@ impl InputMap {
         bindings.insert(KeyCode::ShiftLeft, Action::MoveDown);
 
         bindings.insert(KeyCode::Escape, Action::Quit);
+        bindings.insert(KeyCode::KeyE, Action::SetMenuMode);
+
         Self { bindings }
     }
 
@@ -64,15 +83,22 @@ impl InputMap {
     }
 }
 
-pub fn handle_keyboard_input(event: KeyEvent, input_state: &mut InputState) {
+pub fn handle_keyboard_input(event: KeyEvent, input_state: &mut InputState, input_map: &InputMap) {
     if let PhysicalKey::Code(code) = event.physical_key {
         match event.state {
             ElementState::Pressed => {
-                input_state.pressed_keys.insert(code);
+                if Action::CONTINUOUS_PRESS.contains(input_map.bindings.get(&code).unwrap()) {
+                    input_state.continuous_pressed_keys.insert(code);
+                } else if Action::SINGLE_PRESS.contains(input_map.bindings.get(&code).unwrap()) {
+                    input_state.single_pressed_keys.insert(code);
+                }
             }
             ElementState::Released => {
-                input_state.pressed_keys.remove(&code);
+                if Action::CONTINUOUS_PRESS.contains(input_map.bindings.get(&code).unwrap()) {
+                    input_state.continuous_pressed_keys.remove(&code);
+                }
             }
+            _ => {}
         }
     }
 }

@@ -54,6 +54,7 @@ pub struct RenderApp {
     pub gui: Gui,
     pub shutdown_triggered: bool,
     pub visible_chunks: MeshData,
+    pub menu_mode: bool,
 }
 
 impl RenderApp {
@@ -69,6 +70,7 @@ impl RenderApp {
         let start = Instant::now();
         let models = 1;
         let shutdown_triggered = false;
+        let menu_mode = false;
 
         println!("Creating device");
         data.surface = vk_window::create_surface(&instance, &window, &window)?;
@@ -129,17 +131,17 @@ impl RenderApp {
         create_chunk_pipeline(&device, &mut data)?;
 
         // Temporary: create chunk meshdata to display.
-        let red_voxel = Voxel::new(255, 0, 0);
-        let green_voxel = Voxel::new(0, 255, 0);
-        let blue_voxel = Voxel::new(0, 0, 255);
+        let red_voxel = Voxel::new(255, 0, 80);
+        let green_voxel = Voxel::new(40, 255, 0);
+        let blue_voxel = Voxel::new(0, 70, 255);
 
         const VOXEL_COUNT: usize = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
         let voxel_options = [red_voxel, green_voxel, blue_voxel];
         let voxels: [Voxel; VOXEL_COUNT] =
             std::array::from_fn(|_| voxel_options.choose(&mut rand::rng()).unwrap().clone());
         let active_voxels: [u64; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE / 64] =
-            std::array::from_fn(|_| rand::random());
-        // [u64::MAX; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE / 64];
+            // std::array::from_fn(|_| rand::random());
+        [u64::MAX; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE / 64];
 
         let chunk = Chunk::create(voxels, active_voxels, (0, 0, 0));
 
@@ -159,6 +161,7 @@ impl RenderApp {
             gui,
             shutdown_triggered,
             visible_chunks,
+            menu_mode,
         })
     }
 
@@ -243,32 +246,38 @@ impl RenderApp {
             .width_range(250.0..=std::f32::INFINITY)
             .resizable(true)
             .show(ctx, |ui| {
-                ui.heading("Engine test");
+                ui.heading(RichText::new("Engine Test").font(FontId::proportional(40.0)));
 
-                egui::CollapsingHeader::new("Performance")
-                    .default_open(true)
-                    .show(ui, |ui| {
-                        egui::Grid::new("perf_grid").show(ui, |ui| {
-                            ui.label("FPS");
-                            ui.label(format!("69"));
-                            ui.end_row();
+                egui::CollapsingHeader::new(
+                    RichText::new("Performance").font(FontId::proportional(25.0)),
+                )
+                .default_open(true)
+                .show(ui, |ui| {
+                    egui::Grid::new("perf_grid").show(ui, |ui| {
+                        ui.label("FPS");
+                        ui.label(format!("69"));
+                        ui.end_row();
 
-                            ui.label("Chunks");
-                            ui.label(format!("1"));
-                            ui.end_row();
-                        });
+                        ui.label("Chunks");
+                        ui.label(format!("1"));
+                        ui.end_row();
                     });
+                });
 
-                egui::CollapsingHeader::new("Rendering")
-                    .default_open(true)
-                    .show(ui, |ui| {
-                        ui.checkbox(&mut wireframe, "Wireframe");
-                        ui.checkbox(&mut show_normals, "Normals");
+                egui::CollapsingHeader::new(
+                    RichText::new("Rendering").font(FontId::proportional(25.0)),
+                )
+                .default_open(true)
+                .show(ui, |ui| {
+                    ui.checkbox(&mut wireframe, "Wireframe");
+                    ui.checkbox(&mut show_normals, "Normals");
 
-                        ui.add(
-                            egui::Slider::new(&mut render_distance, 2..=32).text("Render Distance"),
-                        );
-                    });
+                    ui.add(egui::Slider::new(&mut render_distance, 2..=32).text("Render Distance"));
+                });
+
+                if self.menu_mode {
+                    ui.label(RichText::new("Menu Mode").font(FontId::proportional(25.0)));
+                }
             });
 
         egui::Window::new("Debug").show(ctx, |ui| {

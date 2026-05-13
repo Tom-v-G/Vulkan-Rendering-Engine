@@ -78,6 +78,15 @@ impl ApplicationHandler for WindowApp {
             )
             .unwrap();
 
+        window.focus_window();
+        // Lock cursor to screen
+        // window.set_cursor_grab(winit::window::CursorGrabMode::Confined);
+        // .or_else(|_e| window.set_cursor_grab(winit::window::CursorGrabMode::Locked))
+        // .unwrap();
+
+        // set cursor invisible
+        window.set_cursor_visible(false);
+
         let render_app =
             unsafe { RenderApp::create(&window).expect("Failed to create render app.") };
 
@@ -120,7 +129,11 @@ impl ApplicationHandler for WindowApp {
 
             WindowEvent::KeyboardInput { event, .. } => {
                 if !egui_response.consumed {
-                    handle_keyboard_input(event, &mut self.runtime.inputstate);
+                    handle_keyboard_input(
+                        event,
+                        &mut self.runtime.inputstate,
+                        &self.runtime.inputmap,
+                    );
                 }
             }
             _ => (),
@@ -211,21 +224,37 @@ fn update(app: &mut RenderApp, input: &mut InputState, dt: f32, input_map: &Inpu
     const SPEED: f32 = 5.0; // units per second
     let velocity = SPEED * dt;
 
-    for key in &input.pressed_keys {
-        if let Some(action) = input_map.get_action(key) {
+    for key in &input.continuous_pressed_keys {
+        if let Some(action) = input_map.get_action(&key) {
+            if !app.menu_mode {
+                match action {
+                    Action::MoveForward => app.camera.move_forward(velocity),
+                    Action::MoveBackward => app.camera.move_backward(velocity),
+                    Action::MoveLeft => app.camera.move_left(velocity),
+                    Action::MoveRight => app.camera.move_right(velocity),
+                    Action::MoveUp => app.camera.move_up(velocity),
+                    Action::MoveDown => app.camera.move_down(velocity),
+
+                    _ => {}
+                }
+            }
+        }
+    }
+    let pressed: Vec<_> = input.single_pressed_keys.iter().copied().collect();
+
+    for key in pressed {
+        if let Some(action) = input_map.get_action(&key) {
             match action {
-                Action::MoveForward => app.camera.move_forward(velocity),
-                Action::MoveBackward => app.camera.move_backward(velocity),
-                Action::MoveLeft => app.camera.move_left(velocity),
-                Action::MoveRight => app.camera.move_right(velocity),
-                Action::MoveUp => app.camera.move_up(velocity),
-                Action::MoveDown => app.camera.move_down(velocity),
+                Action::SetMenuMode => app.menu_mode = !app.menu_mode,
                 Action::Quit => app.shutdown_triggered = true,
                 _ => {}
             }
         }
+        input.single_pressed_keys.remove(&key);
     }
 
-    app.camera.update_camera_look(input.mouse_delta);
+    if !app.menu_mode {
+        app.camera.update_camera_look(input.mouse_delta);
+    }
     input.mouse_delta = (0., 0.);
 }
