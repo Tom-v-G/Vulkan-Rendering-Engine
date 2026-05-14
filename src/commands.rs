@@ -43,6 +43,7 @@ pub unsafe fn create_command_buffers(device: &Device, data: &mut AppData) -> Res
             .command_buffer_count(1); // data.framebuffers.len() as u32
 
         let command_buffer = device.allocate_command_buffers(&allocate_info)?[0];
+
         data.command_buffers.push(command_buffer);
     }
     data.secondary_command_buffers = vec![vec![]; data.swapchain_images.len()];

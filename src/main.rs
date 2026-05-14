@@ -26,7 +26,8 @@ mod commands;
 mod constants;
 mod descriptors;
 mod device;
-mod gamestate;
+// mod gamestate;
+mod chunk_manager;
 mod gui;
 mod images;
 mod input;
@@ -41,8 +42,10 @@ mod vertex;
 mod voxel;
 
 use crate::app::RenderApp;
+use crate::chunk::Chunk;
 use crate::constants::*;
 // use crate::gamestate::GameState;
+use crate::chunk_manager::ChunkManager;
 use crate::input::{handle_keyboard_input, handle_mouse_input, Action, InputMap, InputState};
 use crate::metrics::EngineMetrics;
 use crate::utils::*;
@@ -57,6 +60,7 @@ struct RuntimeState {
     inputmap: InputMap,
     inputstate: InputState,
     metrics: EngineMetrics,
+    chunk_manager: ChunkManager,
 }
 
 struct WindowApp {
@@ -184,6 +188,25 @@ fn main() -> Result<()> {
     // Window
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll); // Note: ControlFlow::WaitUntil might give better frame pacing
+
+    let chunk_manager = ChunkManager::new();
+
+    // Temporary: create chunk meshdata to display.
+    let red_voxel = Voxel::new(255, 0, 80);
+    let green_voxel = Voxel::new(40, 255, 0);
+    let blue_voxel = Voxel::new(0, 70, 255);
+
+    const VOXEL_COUNT: usize = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
+    let voxel_options = [red_voxel, green_voxel, blue_voxel];
+    let voxels: [Voxel; VOXEL_COUNT] =
+        std::array::from_fn(|_| voxel_options.choose(&mut rand::rng()).unwrap().clone());
+    let active_voxels: [u64; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE / 64] =
+            // std::array::from_fn(|_| rand::random());
+        [u64::MAX; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE / 64];
+
+    let chunk = Chunk::create(voxels, active_voxels, (0, 0, 0));
+
+    let visible_chunks = chunk.mesh([None; 6]);
 
     let runtime = RuntimeState {
         minimized: false,

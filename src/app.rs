@@ -130,23 +130,6 @@ impl RenderApp {
         println!("Creating Voxel Pipeline");
         create_chunk_pipeline(&device, &mut data)?;
 
-        // Temporary: create chunk meshdata to display.
-        let red_voxel = Voxel::new(255, 0, 80);
-        let green_voxel = Voxel::new(40, 255, 0);
-        let blue_voxel = Voxel::new(0, 70, 255);
-
-        const VOXEL_COUNT: usize = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
-        let voxel_options = [red_voxel, green_voxel, blue_voxel];
-        let voxels: [Voxel; VOXEL_COUNT] =
-            std::array::from_fn(|_| voxel_options.choose(&mut rand::rng()).unwrap().clone());
-        let active_voxels: [u64; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE / 64] =
-            // std::array::from_fn(|_| rand::random());
-        [u64::MAX; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE / 64];
-
-        let chunk = Chunk::create(voxels, active_voxels, (0, 0, 0));
-
-        let visible_chunks = chunk.mesh([None; 6]);
-
         println!("App created");
         Ok(Self {
             entry,
@@ -264,6 +247,21 @@ impl RenderApp {
                         ui.label(format!("{} mb", runtime.metrics.memory_mb));
                         ui.end_row();
 
+                        ui.label("Camera Position");
+                        ui.end_row();
+                        let (camera_x, camera_y, camera_z) =
+                            <(f32, f32, f32)>::from(self.camera.eye);
+                        ui.label(format!("{:.2}, {:.2}, {:.2}", camera_x, camera_y, camera_z));
+                        ui.end_row();
+                        ui.label("Camera Direction");
+                        ui.end_row();
+                        let (cam_dir_x, cam_dir_y, cam_dir_z) =
+                            <(f32, f32, f32)>::from(self.camera.direction());
+                        ui.label(format!(
+                            "{:.2}, {:.2}, {:.2}",
+                            cam_dir_x, cam_dir_y, cam_dir_z
+                        ));
+                        ui.end_row();
                         ui.label("Chunks");
                         ui.label(format!("1"));
                         ui.end_row();

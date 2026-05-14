@@ -19,3 +19,4 @@ pub const MOUSE_SENSITIVITY: f32 = 0.01;
 pub const MOVEMENT_SPEED: f32 = 10.0;
 
 pub const CHUNK_SIZE: usize = 16;
+pub const RENDER_DISTANCE: usize = 5;

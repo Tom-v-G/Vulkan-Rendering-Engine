@@ -4,16 +4,16 @@ use crate::constants::*;
 
 #[derive(Debug, Clone)]
 pub struct Camera {
-    eye: Vec3,  // Point3: point in space, Vec3: displacement vector
-    yaw: f32,   // rotation around Z (left/right), in radians
-    pitch: f32, // rotation around right axis (up/down), in radians
+    pub eye: Vec3, // Point3: point in space, Vec3: displacement vector
+    yaw: f32,      // rotation around Z (left/right), in radians
+    pitch: f32,    // rotation around right axis (up/down), in radians
     up: Vec3,
 }
 
 impl Camera {
     pub fn new() -> Self {
         // Looking from (6,0,2) toward the origin
-        let eye = Vec3::new(6.0, 0.0, 2.0);
+        let eye = Vec3::new(30.0, 30.0, 30.0);
         let target = Vec3::new(0.0, 0.0, 0.0);
         let direction = (target - eye).normalize();
         Self {
@@ -24,7 +24,7 @@ impl Camera {
         }
     }
 
-    fn direction(&self) -> Vec3 {
+    pub fn direction(&self) -> Vec3 {
         Vec3::new(
             self.pitch.cos() * self.yaw.cos(),
             self.pitch.cos() * self.yaw.sin(),
