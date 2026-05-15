@@ -26,12 +26,6 @@ pub struct MeshData {
     pub indices: Vec<u32>,
 }
 
-impl MeshData {
-    pub fn is_empty(&self) -> bool {
-        self.indices.is_empty()
-    }
-}
-
 // The 6 face directions. Order matches the axis loops below.
 // Each entry: (normal, u_axis, v_axis)
 // u/v axes define which two coordinates span the face quad,

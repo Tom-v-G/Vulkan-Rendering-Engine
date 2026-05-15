@@ -1,15 +1,26 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, mem};
+
+use png::chunk;
 
 use crate::{
+    app::RenderApp,
     chunk::{Chunk, ChunkCoord},
     chunk_rendering::GpuChunk,
     chunkmesher::MeshData,
     constants::RENDER_DISTANCE,
+    instance,
+    terrain_generator::TerrainGenerator,
+    utils::*,
 };
 
 pub enum ChunkState {
-    // Terrain data generated, no mesh yet
+    // Not generated yet
+    Unloaded,
+    // Terrain data generated or loaded from disk
     Generated(Chunk),
+
+    // Empty chunks are never meshed or uploaded
+    Empty(Chunk),
 
     // Mesh computed, waiting for GPU upload
     // Happens for chunks just outside render distance,
@@ -33,7 +44,7 @@ impl ChunkManager {
     /// Return neighboring chunks in the order expected by the chunkmesher
     /// PosX, NegX, PosY, NegY, PosZ, NegZ
     /// None if the chunk has not been loaded yet
-    pub fn neighbors(&self, chunk_coord: ChunkCoord) -> [Option<&ChunkState>; 6] {
+    pub fn neighbors(&self, chunk_coord: &ChunkCoord) -> [Option<&ChunkState>; 6] {
         let mut neighbors: [Option<&ChunkState>; 6] = [None; 6];
 
         let pos_x_neighbor = (chunk_coord.0 + 1, chunk_coord.1, chunk_coord.2);
@@ -58,30 +69,94 @@ impl ChunkManager {
         self.chunks.get(&chunk_coord)
     }
 
-    pub fn put_chunk(&mut self, chunk_coord: ChunkCoord, chunk: Chunk) {
-        self.chunks
-            .insert(chunk_coord, ChunkState::Generated(chunk));
+    pub fn queue_chunk(&mut self, chunk_coord: ChunkCoord) {
+        println!("Inserting chunk at {:?}", chunk_coord);
+        self.chunks.insert(chunk_coord, ChunkState::Unloaded);
     }
 
-    pub fn update(&mut self, player_coord: ChunkCoord /* vulkan args */) {
+    /// Updates Chunks to based on their current state
+    /// Queues meshing and GPU uploading when necesssary
+    pub fn update(
+        &mut self,
+        player_coord: ChunkCoord, /* vulkan args */
+        terrain_generator: &TerrainGenerator,
+        render_app: &mut RenderApp,
+    ) -> Result<()> {
         for (coord, state) in &mut self.chunks {
             match state {
-                ChunkState::Generated(chunk) => {
-                    // Needs meshing — kick off to worker thread
+                ChunkState::Unloaded => {
+                    debug!("Generating chunk: {:?}", coord);
+                    // Chunks need to be loaded
+                    let chunk = terrain_generator.generate_chunk(coord);
+
+                    if chunk.is_empty() {
+                        debug!("chunk {:?} is empty", coord);
+                        *state = ChunkState::Empty(chunk);
+                    } else {
+                        debug!("chunk {:?} generated", coord);
+                        *state = ChunkState::Generated(chunk);
+                    }
                 }
-                ChunkState::Meshed(chunk, mesh) => {
+                ChunkState::Empty(_) => continue, // Todo: add drop when out of loading distance.
+
+                ChunkState::Generated(_) => {
+                    // Needs meshing
+                    // TODO kick off to worker thread
+                    // Move the old state out
+                    debug!("Meshing chunk {:?}", coord);
+                    let old_state = mem::replace(state, ChunkState::Unloaded);
+
+                    if let ChunkState::Generated(chunk) = old_state {
+                        let mesh_data = chunk.mesh([None; 6]);
+                        debug!("Meshing succesful: {:?}", coord);
+                        *state = ChunkState::Meshed(chunk, mesh_data);
+                    }
+                }
+                ChunkState::Meshed(_, _) => {
                     if within_render_distance(*coord, player_coord, RENDER_DISTANCE) {
                         // Needs GPU upload
+
+                        let old_state = mem::replace(state, ChunkState::Unloaded);
+
+                        if let ChunkState::Meshed(chunk, mesh_data) = old_state {
+                            unsafe {
+                                let gpu_chunk = GpuChunk::new(
+                                    &render_app.instance,
+                                    &render_app.device,
+                                    render_app.data.physical_device,
+                                    render_app.data.graphics_queue,
+                                    render_app.data.command_pool,
+                                    &mesh_data,
+                                    *coord,
+                                )?;
+                                debug!("Chunk uploaded to GPU: {:?}", coord);
+                                *state = ChunkState::Resident(chunk, gpu_chunk)
+                            }
+                        }
                     }
                 }
                 ChunkState::Resident(chunk, gpu_chunk) => {
                     if !within_render_distance(*coord, player_coord, RENDER_DISTANCE) {
                         // Has moved out of render distance — free GPU memory,
                         // transition back to Meshed to keep mesh data ready
+                        continue;
+
+                        // (call destroy for the chunks)
                     }
                 }
             }
         }
+
+        return Ok(());
+    }
+
+    /// Returns an iterator over the currently visible chunks
+    /// TODO add Frustum Culling
+    pub fn visible_chunks(&self) -> impl Iterator<Item = &GpuChunk> {
+        self.chunks.values().filter_map(|state| match state {
+            ChunkState::Resident(_, gpu_chunk) => Some(gpu_chunk),
+            _ => None,
+        })
     }
 
     // TODO rewrite this function
@@ -100,6 +175,17 @@ impl ChunkManager {
     //         };
     //     }
     // }
+
+    pub unsafe fn destroy(&mut self, instance: &Instance, device: &Device) {
+        for (coord, state) in &mut self.chunks {
+            match state {
+                ChunkState::Resident(_, gpu_chunk) => {
+                    *&gpu_chunk.destroy(instance, device);
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
 fn within_render_distance(

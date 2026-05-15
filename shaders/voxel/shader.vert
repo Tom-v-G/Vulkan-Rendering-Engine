@@ -29,7 +29,7 @@ const vec3 NORMALS[6] = vec3[](
 );
 
 void main() {
-    gl_Position = ubo.proj * ubo.view * vec4(inPosition + 16.0 * cpcs.world_pos, 1.0); // Note: chunk size is hardcoded. add as uniform
+    gl_Position = ubo.proj * ubo.view * vec4(inPosition + cpcs.world_pos, 1.0); // Note: chunk size is hardcoded. add as uniform
     fragColor = inColor / 255.0;
     // Normals unused for the moment
 }

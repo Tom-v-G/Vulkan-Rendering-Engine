@@ -36,6 +36,7 @@ use crate::pipeline::{
 };
 use crate::swapchain::{create_swapchain, create_swapchain_image_views};
 use crate::textures::{create_texture_image, create_texture_image_view, create_texture_sampler};
+use crate::utils::*;
 use crate::voxel::Voxel;
 use crate::{constants::*, RuntimeState};
 
@@ -53,7 +54,6 @@ pub struct RenderApp {
     pub models: usize,
     pub gui: Gui,
     pub shutdown_triggered: bool,
-    pub visible_chunks: MeshData,
     pub menu_mode: bool,
 }
 
@@ -143,7 +143,6 @@ impl RenderApp {
             models,
             gui,
             shutdown_triggered,
-            visible_chunks,
             menu_mode,
         })
     }
@@ -299,7 +298,7 @@ impl RenderApp {
             // );
         });
 
-        self.update_command_buffer(image_index, window)?; // <- GUI render also happens in here
+        self.update_command_buffer(image_index, window, runtime)?; // <- GUI render also happens in here
         self.update_uniform_buffer(image_index, &self.camera)?;
 
         let wait_semaphores = &[self.data.frames[self.frame].image_available_semaphore];
@@ -349,7 +348,11 @@ impl RenderApp {
     }
 
     /// Destroys our Vulkan app.
-    pub unsafe fn destroy(&mut self) {
+    pub unsafe fn destroy(&mut self, runtime: &mut RuntimeState) {
+        // Destroy Runtime Gpu Components
+        // (uploaded chunks)
+        runtime.chunk_manager.destroy(&self.instance, &self.device);
+
         self.destroy_swapchain();
         self.data
             .command_pools
@@ -474,7 +477,7 @@ impl RenderApp {
         let aspect_ratio =
             self.data.swapchain_extent.width as f32 / self.data.swapchain_extent.height as f32;
         let near = 0.1;
-        let far = 100.0;
+        let far = 9999.0;
 
         let proj = correction * Mat4::perspective_rh(fov_y, aspect_ratio, near, far);
         let ubo = UniformBufferObject { view, proj };
@@ -498,6 +501,7 @@ impl RenderApp {
         &mut self,
         image_index: usize,
         window: &Window,
+        runtime: &RuntimeState,
     ) -> Result<()> {
         //Approach 3: resetting command pools
 
@@ -578,16 +582,12 @@ impl RenderApp {
         // }
 
         // Draw chunks on the primary buffer (for now)
-        let gpu_chunk = GpuChunk::new(
-            &self.instance,
-            &self.device,
-            self.data.physical_device,
-            self.data.graphics_queue,
-            self.data.command_pool,
-            &self.visible_chunks,
-            (0, 0, 0),
+
+        self.draw_chunks(
+            command_buffer,
+            runtime.chunk_manager.visible_chunks(),
+            image_index,
         )?;
-        self.draw_chunks(command_buffer, &[&gpu_chunk], image_index)?;
 
         self.device.cmd_end_render_pass(command_buffer);
 
@@ -607,12 +607,14 @@ impl RenderApp {
         self.device.end_command_buffer(command_buffer)?;
 
         // queue gpu chunks for deletion
-        self.data.frames[self.frame]
-            .deletion_queue
-            .push(gpu_chunk.vertex_buffer, gpu_chunk.vertex_buffer_memory);
-        self.data.frames[self.frame]
-            .deletion_queue
-            .push(gpu_chunk.index_buffer, gpu_chunk.index_buffer_memory);
+        // self.data.frames[self.frame]
+        //     .deletion_queue
+        //     .push(gpu_chunk.vertex_buffer, gpu_chunk.vertex_buffer_memory);
+        // self.data.frames[self.frame]
+        //     .deletion_queue
+        //     .push(gpu_chunk.index_buffer, gpu_chunk.index_buffer_memory);
+
+        // TODO: check if a deletion queue is necesary for the frames
 
         Ok(())
     }
@@ -716,12 +718,15 @@ impl RenderApp {
         Ok(command_buffer)
     }
 
-    pub unsafe fn draw_chunks(
+    pub unsafe fn draw_chunks<'a, I>(
         &self,
         command_buffer: vk::CommandBuffer,
-        visible_chunks: &[&GpuChunk],
+        visible_chunks: I,
         image_index: usize,
-    ) -> Result<()> {
+    ) -> Result<()>
+    where
+        I: IntoIterator<Item = &'a GpuChunk>,
+    {
         // Bind pipeline once — all chunks share the same pipeline
         self.device.cmd_bind_pipeline(
             command_buffer,
@@ -740,6 +745,7 @@ impl RenderApp {
         );
 
         for chunk in visible_chunks {
+            debug!("Rendering {:?}", chunk.world_pos);
             // Per-chunk world position as a push constant
             let push = ChunkPushConstants {
                 world_pos: [
@@ -747,6 +753,7 @@ impl RenderApp {
                     chunk.world_pos.1 as f32 * CHUNK_SIZE as f32,
                     chunk.world_pos.2 as f32 * CHUNK_SIZE as f32,
                 ],
+                _padding: 0.,
             };
             self.device.cmd_push_constants(
                 command_buffer,

@@ -36,18 +36,19 @@ mod load_models;
 mod metrics;
 mod pipeline;
 mod swapchain;
+mod terrain_generator;
 mod textures;
 mod utils;
 mod vertex;
 mod voxel;
 
 use crate::app::RenderApp;
-use crate::chunk::Chunk;
 use crate::constants::*;
 // use crate::gamestate::GameState;
 use crate::chunk_manager::ChunkManager;
 use crate::input::{handle_keyboard_input, handle_mouse_input, Action, InputMap, InputState};
 use crate::metrics::EngineMetrics;
+use crate::terrain_generator::TerrainGenerator;
 use crate::utils::*;
 
 struct RenderState {
@@ -61,6 +62,7 @@ struct RuntimeState {
     inputstate: InputState,
     metrics: EngineMetrics,
     chunk_manager: ChunkManager,
+    terrain_generator: TerrainGenerator,
 }
 
 struct WindowApp {
@@ -114,7 +116,7 @@ impl ApplicationHandler for WindowApp {
         match event {
             // Handle shutdown
             WindowEvent::CloseRequested => {
-                exit_program(&event_loop, &mut renderstate.render_app);
+                exit_program(&event_loop, &mut renderstate.render_app, &mut self.runtime);
                 event_loop.exit();
             }
             // Redraw the application.
@@ -174,7 +176,7 @@ impl ApplicationHandler for WindowApp {
 
         // Handle shutdown
         if renderstate.render_app.shutdown_triggered {
-            exit_program(&event_loop, &mut renderstate.render_app);
+            exit_program(&event_loop, &mut renderstate.render_app, &mut self.runtime);
             event_loop.exit();
         }
 
@@ -189,30 +191,25 @@ fn main() -> Result<()> {
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll); // Note: ControlFlow::WaitUntil might give better frame pacing
 
-    let chunk_manager = ChunkManager::new();
+    let mut chunk_manager = ChunkManager::new();
+    for x in 0..6 {
+        for y in 0..6 {
+            chunk_manager.queue_chunk((x, y, 0));
+        }
+    }
 
-    // Temporary: create chunk meshdata to display.
-    let red_voxel = Voxel::new(255, 0, 80);
-    let green_voxel = Voxel::new(40, 255, 0);
-    let blue_voxel = Voxel::new(0, 70, 255);
+    chunk_manager.queue_chunk((1, -1, 2));
+    chunk_manager.queue_chunk((2, 4, 3));
 
-    const VOXEL_COUNT: usize = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
-    let voxel_options = [red_voxel, green_voxel, blue_voxel];
-    let voxels: [Voxel; VOXEL_COUNT] =
-        std::array::from_fn(|_| voxel_options.choose(&mut rand::rng()).unwrap().clone());
-    let active_voxels: [u64; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE / 64] =
-            // std::array::from_fn(|_| rand::random());
-        [u64::MAX; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE / 64];
-
-    let chunk = Chunk::create(voxels, active_voxels, (0, 0, 0));
-
-    let visible_chunks = chunk.mesh([None; 6]);
+    let terrain_generator = TerrainGenerator::new();
 
     let runtime = RuntimeState {
         minimized: false,
         inputmap: InputMap::new(),
         inputstate: InputState::new(),
         metrics: EngineMetrics::new(),
+        chunk_manager,
+        terrain_generator,
     };
 
     let mut window_app = WindowApp {
@@ -224,7 +221,11 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn exit_program(eventloop: &ActiveEventLoop, render_app: &mut RenderApp) {
+fn exit_program(
+    eventloop: &ActiveEventLoop,
+    render_app: &mut RenderApp,
+    runtime: &mut RuntimeState,
+) {
     println!("Closing window");
     eventloop.exit();
     // destroying = true;
@@ -233,11 +234,11 @@ fn exit_program(eventloop: &ActiveEventLoop, render_app: &mut RenderApp) {
         render_app.device.device_wait_idle().unwrap();
     }
     unsafe {
-        render_app.destroy();
+        render_app.destroy(runtime);
     }
 }
 
-fn update(app: &mut RenderApp, runtime: &mut RuntimeState) {
+fn update(app: &mut RenderApp, runtime: &mut RuntimeState) -> Result<()> {
     let input_state = &mut runtime.inputstate;
     let input_map = &runtime.inputmap;
 
@@ -280,7 +281,18 @@ fn update(app: &mut RenderApp, runtime: &mut RuntimeState) {
     input_state.mouse_delta = (0., 0.);
 
     // Game updates
-
+    let player_coord = <(i32, i32, i32)>::from(
+        app.camera
+            .eye
+            .floor()
+            .as_ivec3()
+            .map(|v| v.div_euclid(CHUNK_SIZE as i32)),
+    );
+    runtime
+        .chunk_manager
+        .update(player_coord, &runtime.terrain_generator, app)?;
     // Metric collection
     runtime.metrics.update();
+
+    return Ok(());
 }

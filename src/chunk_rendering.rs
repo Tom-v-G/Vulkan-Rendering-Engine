@@ -17,6 +17,7 @@ use crate::{
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 pub struct ChunkPushConstants {
     pub world_pos: [f32; 3],
+    pub _padding: f32,
 }
 
 pub struct GpuChunk {
